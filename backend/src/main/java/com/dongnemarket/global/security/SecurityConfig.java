@@ -65,6 +65,8 @@ public class SecurityConfig {
 						.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
 						// Prometheus 메트릭 스크레이프 (로컬 모니터링용, 인증 불필요 — 운영 반영 시 접근 제한 필요)
 						.requestMatchers("/actuator/prometheus").permitAll()
+						// WebSocket 핸드셰이크(HTTP GET Upgrade). 실제 인증은 STOMP CONNECT 시 JwtChannelInterceptor(U1-d)에서.
+						.requestMatchers("/ws/**").permitAll()
 						// 인증 불필요 (회원가입/로그인, 공개 조회)
 						.requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login", "/api/auth/reissue", "/api/auth/email-verifications", "/api/auth/email-verifications/confirm", "/api/auth/password-resets", "/api/auth/password-resets/confirm").permitAll()
 						// 소셜 로그인(카카오/구글). provider가 URL에 변수로 들어가지 않는 리터럴 경로만 허용한다.
