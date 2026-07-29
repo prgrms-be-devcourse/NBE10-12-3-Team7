@@ -41,6 +41,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	// WebSocket + STOMP — 실시간 경매(서버↔클라 양방향). @MessageMapping·SimpMessagingTemplate 활성화.
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation 'io.micrometer:micrometer-registry-prometheus'
 	// S3 이미지 저장(global/storage). 자격증명은 DefaultCredentialsProvider(로컬 ~/.aws 또는 EC2 IAM 역할).
 	implementation 'software.amazon.awssdk:s3'
