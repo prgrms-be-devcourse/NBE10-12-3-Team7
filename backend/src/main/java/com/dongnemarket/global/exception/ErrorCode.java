@@ -113,7 +113,12 @@ public enum ErrorCode {
 	INVALID_MEMBER_STATUS(400, "ADMIN_002", "잘못된 회원 상태 값입니다."),
 	INVALID_REPORT_STATUS(400, "ADMIN_003", "잘못된 신고 상태 값입니다."),
 	STORAGE_ORPHAN_DELETE_FAILED(500, "ADMIN_004", "고아 파일 삭제 중 오류가 발생했습니다."),
-	INVALID_STORAGE_DIRECTORY(400, "ADMIN_005", "허용되지 않은 저장소 디렉터리입니다.");
+	INVALID_STORAGE_DIRECTORY(400, "ADMIN_005", "허용되지 않은 저장소 디렉터리입니다."),
+
+	// ===== AUCTION ERROR =====
+	AUCTION_NOT_FOUND(404, "AUCTION_001", "경매를 찾을 수 없습니다."),
+	AUCTION_NOT_ONGOING(409, "AUCTION_002", "진행 중인 경매가 아닙니다."),
+	BID_TOO_LOW(400, "AUCTION_003", "현재가보다 높은 금액만 입찰할 수 있습니다.");
 
 	private final int status;
 	private final String code;
