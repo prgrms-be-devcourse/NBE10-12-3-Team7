@@ -165,6 +165,17 @@ public class ChatService {
         return ChatMessageResponse.from(saved);
     }
 
+    /**
+     * 요청자가 방 참여자(구매자·판매자)인지 여부. WebSocket 토픽 구독 인가(ChatSubscribeInterceptor)용.
+     * 방이 없으면 {@code false}(구독 거부).
+     */
+    @Transactional(readOnly = true)
+    public boolean isParticipant(Long memberId, Long roomId) {
+        return chatRoomRepository.findById(roomId)
+                .map(room -> room.isParticipant(memberId))
+                .orElse(false);
+    }
+
     private void validateParticipant(ChatRoom room, Long memberId) {
         if (!room.isParticipant(memberId)) {
             throw new BusinessException(ErrorCode.CHAT_ACCESS_DENIED);
