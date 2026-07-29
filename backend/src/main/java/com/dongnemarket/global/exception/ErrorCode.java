@@ -118,7 +118,8 @@ public enum ErrorCode {
 	// ===== AUCTION ERROR =====
 	AUCTION_NOT_FOUND(404, "AUCTION_001", "경매를 찾을 수 없습니다."),
 	AUCTION_NOT_ONGOING(409, "AUCTION_002", "진행 중인 경매가 아닙니다."),
-	BID_TOO_LOW(400, "AUCTION_003", "현재가보다 높은 금액만 입찰할 수 있습니다.");
+	BID_TOO_LOW(400, "AUCTION_003", "현재가보다 높은 금액만 입찰할 수 있습니다."),
+	AUCTION_BID_CONFLICT(409, "AUCTION_004", "다른 입찰이 먼저 처리되었습니다. 최신 현재가로 다시 입찰해주세요.");
 
 	private final int status;
 	private final String code;
