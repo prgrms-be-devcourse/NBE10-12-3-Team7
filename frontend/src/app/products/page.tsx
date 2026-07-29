@@ -80,6 +80,8 @@ export default function ProductsPage() {
   const [search,     setSearch]     = useState('')
   const [categoryId, setCategoryId] = useState<number | 'all'>('all')
   const [sort,       setSort]       = useState('latest')
+  const [sortOpen,   setSortOpen]   = useState(false)
+  const sortWrapRef = useRef<HTMLDivElement>(null)
 
   /* ── 내 동네 설정 ── */
   const [myLocations,     setMyLocations]     = useState<MemberLocation[]>([])
@@ -283,6 +285,18 @@ export default function ProductsPage() {
     ? '내 동네 설정'
     : (myLocations.find(l => l.regionCode === activeRegionCode)?.regionFullName ?? myLocations[0].regionFullName)
 
+  /* ── 정렬 드롭다운 바깥 클릭 시 닫기 ── */
+  useEffect(() => {
+    if (!sortOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (sortWrapRef.current && !sortWrapRef.current.contains(e.target as Node)) {
+        setSortOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [sortOpen])
+
   /* ── 관심 토글 ── */
   async function toggleFavorite(e: React.MouseEvent, product: Product) {
     e.preventDefault()
@@ -452,16 +466,33 @@ export default function ProductsPage() {
       {/* 피드 헤더 */}
       <div className={styles.feedHead}>
         <h2>우리 동네 따끈한 매물</h2>
-        <select
-          className={styles.sortSelect}
-          value={sort}
-          onChange={e => setSort(e.target.value)}
-          aria-label="정렬 기준"
-        >
-          {SORT_OPTIONS.map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+        <div className={styles.sortWrap} ref={sortWrapRef}>
+          <button
+            type="button"
+            className={styles.sortBtn}
+            onClick={() => setSortOpen(o => !o)}
+            aria-haspopup="listbox"
+            aria-expanded={sortOpen}
+          >
+            {SORT_OPTIONS.find(o => o.value === sort)?.label}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <ul className={`${styles.sortList}${sortOpen ? ' ' + styles.sortListOpen : ''}`} role="listbox">
+            {SORT_OPTIONS.map(o => (
+              <li key={o.value}>
+                <button
+                  type="button"
+                  className={`${styles.sortOption}${o.value === sort ? ' ' + styles.sortOptionOn : ''}`}
+                  role="option"
+                  aria-selected={o.value === sort}
+                  onClick={() => { setSort(o.value); setSortOpen(false) }}
+                >
+                  {o.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       {status === 'loading' && (

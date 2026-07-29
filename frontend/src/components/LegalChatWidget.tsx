@@ -31,8 +31,9 @@ export default function LegalChatWidget() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, status])
 
-  /* 관리자 화면은 자체 콘솔 레이아웃이라 노출하지 않는다(Header와 동일 규칙). */
-  if (pathname?.startsWith('/admin')) return null
+  /* 관리자 화면은 자체 콘솔 레이아웃이라 노출하지 않는다(Header와 동일 규칙).
+     첫 진입 웰컴 화면(/)·로그인·회원가입 화면은 거래 관련 기능이 없어 법률 상담 버튼이 불필요하다. */
+  if (pathname?.startsWith('/admin') || pathname === '/' || pathname === '/login' || pathname === '/signup') return null
 
   async function send() {
     const question = input.trim()
@@ -88,17 +89,12 @@ export default function LegalChatWidget() {
               <div className={styles.panelTitle}>⚖️ 거래 법률 상담</div>
               <div className={styles.panelSub}>AI가 참고용으로 답변해요 · 법적 효력은 없어요</div>
             </div>
-            <button type="button" className={styles.panelClose} aria-label="닫기" onClick={() => setOpen(false)}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
           </div>
 
           <div className={styles.thread} ref={listRef}>
             {messages.length === 0 && (
               <div className={styles.emptyState}>
-                부동산 계약, 사기 피해, 반품·환불 등 중고거래 관련 법률 질문을 편하게 물어보세요.
+                부동산 계약, 사기 피해, 반품·환불 등<br />중고거래 관련 법률 질문을 편하게 물어보세요.
               </div>
             )}
             {messages.map((m, i) => (

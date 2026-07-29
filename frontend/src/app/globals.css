@@ -132,11 +132,6 @@ header {
 }
 .main-nav a:hover { color: var(--primary); background: var(--primary-soft); }
 .main-nav a.on   { color: var(--primary); background: var(--primary-soft); }
-.main-nav a.new  { position: relative; }
-.main-nav a.new::after {
-  content: "NEW"; position: absolute; top: -6px; right: -2px; font-size: 8.5px; font-weight: 800;
-  background: var(--danger); color: #fff; padding: 1px 5px; border-radius: 999px; letter-spacing: .02em;
-}
 @media (max-width: 900px) { .main-nav { display: none; } }
 .sp { flex: 1; }
 .icon-btn {
