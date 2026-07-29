@@ -2,13 +2,17 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import { Client } from '@stomp/stompjs'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '@/lib/apiClient'
-import { getCurrentMemberId } from '@/lib/auth'
+import { getAccessToken, getCurrentMemberId } from '@/lib/auth'
 import type { TradeStatus } from '@/lib/tradeStatus'
 import MannerScoreBadge from '@/components/MannerScoreBadge'
 import MannerRatingModal from '@/components/MannerRatingModal'
 import styles from './page.module.css'
+
+/** 로컬 dev는 Next 서버(:3000)가 WebSocket 업그레이드를 프록시하지 못해 백엔드에 직접 접속한다. */
+const WS_ORIGIN = process.env.NEXT_PUBLIC_WS_ORIGIN ?? 'ws://localhost:8080'
 
 interface ChatProductSummary {
   productId: number
@@ -41,8 +45,6 @@ interface ChatRoom {
 }
 
 type PageStatus = 'loading' | 'ready' | 'error'
-
-const POLL_MS = 3000
 
 function priceText(price: number) {
   return price === 0 ? '나눔' : price.toLocaleString('ko-KR') + '원'
@@ -139,22 +141,30 @@ export default function ChatRoomPage() {
     return () => { cancelled = true }
   }, [roomId])
 
+  /* 실시간 수신 — 방 토픽을 구독해 상대 메시지를 폴링 없이 즉시 반영한다.
+     전송은 기존 REST(POST .../messages)를 그대로 쓰고, 서버가 전송 성공 후 이 토픽으로 브로드캐스트한다. */
   useEffect(() => {
     if (status !== 'ready') return
-    const timer = setInterval(() => {
-      apiFetch(`/api/chat-rooms/${roomId}/messages`)
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          const list: ChatMessage[] = (data?.data?.messages ?? []).slice().reverse()
-          if (list.some(m => !seenIds.current.has(m.messageId))) {
-            mergeMessages(list)
-            scrollToBottom()
-            markRead()
-          }
+
+    const client = new Client({
+      brokerURL: `${WS_ORIGIN}/ws`,
+      reconnectDelay: 3000,
+      beforeConnect: () => {
+        client.connectHeaders = { Authorization: `Bearer ${getAccessToken() ?? ''}` }
+      },
+      onConnect: () => {
+        client.subscribe(`/topic/chat-rooms/${roomId}`, frame => {
+          const msg: ChatMessage = JSON.parse(frame.body)
+          mergeMessages([msg])
+          scrollToBottom()
+          if (msg.senderId !== myMemberId) markRead()
         })
-        .catch(() => {})
-    }, POLL_MS)
-    return () => clearInterval(timer)
+      },
+    })
+    client.activate()
+
+    return () => { client.deactivate() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- myMemberId는 세션 동안 불변, roomId/status 변경 시에만 재연결하면 된다.
   }, [status, roomId])
 
   async function handleSend(e: React.FormEvent) {
