@@ -1,0 +1,87 @@
+.wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 34px 24px 90px;
+}
+
+.intro { margin-bottom: 24px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 700;
+  color: var(--primary); background: var(--primary-soft);
+  padding: 5px 12px; border-radius: 999px;
+}
+.intro h1 { margin: 12px 0 5px; font-size: 24px; font-weight: 800; letter-spacing: -.03em; }
+.intro p  { margin: 0; color: var(--text-muted); font-size: 14px; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 28px 30px;
+}
+
+.formMsg { display: none; margin-bottom: 20px; padding: 12px 14px; border-radius: 12px; font-size: 13.5px; font-weight: 600; }
+.formMsg.show    { display: block; }
+.formMsg.error   { background: var(--danger-soft); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); }
+.formMsg.success { background: var(--ok-soft);     color: var(--ok);     border: 1px solid color-mix(in srgb, var(--ok)     30%, transparent); }
+
+.field { margin-bottom: 20px; }
+.field label { display: block; font-size: 13.5px; font-weight: 700; margin-bottom: 8px; }
+.req { color: var(--primary); margin-left: 3px; }
+
+.field input[type="text"],
+.field input[type="datetime-local"],
+.field .textarea {
+  width: 100%; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: 12px; font-size: 14.5px; font-family: inherit;
+  background: var(--bg); color: var(--text); outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field input:focus, .textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.textarea { resize: vertical; min-height: 110px; line-height: 1.6; width: 100%; }
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+@media (max-width: 480px) { .row2 { grid-template-columns: 1fr; } }
+
+.priceIn { position: relative; }
+.priceIn input { padding-right: 38px; }
+.won { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 14px; font-weight: 600; }
+
+.imagePreview {
+  width: 88px; height: 88px; margin-bottom: 10px;
+  border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface-2); overflow: hidden;
+}
+.imagePreview img { width: 100%; height: 100%; object-fit: cover; }
+.uploadBtn {
+  display: inline-block;
+  padding: 9px 14px; border: 1.5px dashed var(--border); border-radius: 10px;
+  background: var(--bg); color: var(--text-muted); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.uploadBtn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.uploadBtnDisabled { opacity: .6; cursor: not-allowed; pointer-events: none; }
+
+.actions { display: flex; gap: 10px; margin-top: 6px; }
+.btnSubmit {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 14px 18px; border: 1px solid var(--primary); background: var(--primary);
+  color: #fff; border-radius: 13px; font-size: 15px; font-weight: 700;
+  font-family: inherit; cursor: pointer;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--primary) 30%, transparent);
+  transition: background .15s, transform .1s;
+}
+.btnSubmit:hover    { background: var(--primary-d); }
+.btnSubmit:active   { transform: translateY(1px); }
+.btnSubmit:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+.btnGhost {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  padding: 14px 18px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); border-radius: 13px; font-size: 15px; font-weight: 600;
+  font-family: inherit; cursor: pointer; text-decoration: none;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.btnGhost:hover { background: var(--primary-soft); border-color: var(--primary-soft); color: var(--primary); }
+
+.notice { text-align: center; padding: 70px 20px; color: var(--text-muted); }
+.notice p { margin: 0 0 16px; font-size: 14px; }
