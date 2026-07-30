@@ -35,13 +35,13 @@ public class NotificationEventHandler {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handleCommentCreated(CommentCreatedEvent event) {
-        notificationService.notifyComment(event.recipientId(), event.productId(), event.productTitle());
+        notificationService.notifyComment(event.getRecipientId(), event.getProductId(), event.getProductTitle());
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handlePriceChanged(ProductPriceChangedEvent event) {
-        notificationService.notifyPriceChange(event.productId(), event.productTitle());
+        notificationService.notifyPriceChange(event.getProductId(), event.getProductTitle());
     }
 
     /**
@@ -52,6 +52,6 @@ public class NotificationEventHandler {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleChatMessageSent(ChatMessageSentEvent event) {
-        badgePublisher.pushTo(event.recipientId());
+        badgePublisher.pushTo(event.getRecipientId());
     }
 }

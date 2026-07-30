@@ -85,14 +85,14 @@ public class AdminStorageService {
 
     private List<OrphanFileResponse> scan(String directory, Set<String> referenced, Instant now, Instant threshold) {
         return fileStorageService.list(directory).stream()
-                .filter(obj -> !referenced.contains(obj.filename()))     // DB 미참조 = 고아 후보
-                .filter(obj -> obj.lastModified().isBefore(threshold))   // grace 통과(충분히 오래된 것만)
+                .filter(obj -> !referenced.contains(obj.getFilename()))     // DB 미참조 = 고아 후보
+                .filter(obj -> obj.getLastModified().isBefore(threshold))   // grace 통과(충분히 오래된 것만)
                 .map(obj -> new OrphanFileResponse(
                         directory,
-                        obj.filename(),
-                        obj.sizeBytes(),
-                        obj.lastModified(),
-                        Duration.between(obj.lastModified(), now).toHours()))
+                        obj.getFilename(),
+                        obj.getSizeBytes(),
+                        obj.getLastModified(),
+                        Duration.between(obj.getLastModified(), now).toHours()))
                 .toList();
     }
 

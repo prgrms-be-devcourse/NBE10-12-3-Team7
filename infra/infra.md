@@ -17,7 +17,7 @@
 
 | | onprem | cloud |
 |---|---|---|
-| 이미지 | 배포 호스트에서 로컬 빌드 | GitHub Actions가 ECR로 push → EC2가 pull |
+| 이미지 | 배포 호스트에서 로컬 빌드 | ECR로 push → EC2가 pull (자동화는 재설계 중, 아래 CI/CD 참고) |
 | 파일 저장 | `FILE_STORAGE_TYPE=local` | `s3` |
 
 Dockerfile은 각 앱 폴더(`backend/`, `frontend/`)에 있으며 **지형 무관 공용**이다.
@@ -58,11 +58,27 @@ cd infra/onprem && docker compose --profile observability --profile edge down
 
 ## CI/CD
 
-- **CI** (`.github/workflows/ci.yml`) — feature 브랜치 push + develop 대상 PR에서 백엔드 테스트·프론트 체크·nginx 설정 동기화 검사.
-- **CD** (`.github/workflows/cd-app.yml`) — develop push 시 변경된 앱 이미지를 빌드해 ECR로 push하고, 앱 EC2에 SSH로 접속해 pull·재기동.
-- AWS 인증은 **OIDC**(`secrets.AWS_ROLE_ARN`). 배포 대상은 `secrets.EC2_APP_HOST`, 접속 키는 `secrets.EC2_SSH_KEY`.
+> 🚧 **현재 없음.** 인프라 구조를 대폭 변경할 예정이라 파이프라인을 걷어냈다
+> (`.github/workflows/ci.yml`, `cd-app.yml` 제거). Kotlin 마이그레이션을 마친 뒤 인프라와 함께 재설계한다.
 
-> ⚠️ 리포를 이전하면 **IAM 역할의 신뢰 정책에 새 리포 경로를 허용**해야 한다. 안 하면 모든 배포가 OIDC 인증에서 실패한다.
+그동안의 대체 수단:
+
+| 항목 | 지금 |
+|---|---|
+| 테스트 게이트 | 각 담당자가 머지 전 `cd backend && ./gradlew test` 로 직접 확인 |
+| 배포 | 자동 배포 없음. develop 머지가 배포로 이어지지 않는다 → 필요 시 수동 |
+
+> ⚠️ Java↔Kotlin 혼재 기간에는 도메인 간 컴파일 영향이 있다(예: `Member` 엔티티는 7개 도메인에서
+> 34회 참조). 자기 브랜치 테스트로는 안 잡히므로 **develop 머지 직후 전체 테스트를 한 번 더** 돌린다.
+
+### 재구축 시 반영할 항목
+
+- 테스트 게이트 (`./gradlew test` on PR)
+- Kotlin 마이그레이션 진척 카운터 (`.java`/`.kt` 집계 → Step Summary)
+- ktlint 게이트 승격 — `backend/build.gradle` 의 `ignoreFailures = false`
+- AWS 인증은 **OIDC**(`secrets.AWS_ROLE_ARN`), 배포 대상 `secrets.EC2_APP_HOST`, 접속 키 `secrets.EC2_SSH_KEY`
+- ⚠️ 리포를 이전하면 **IAM 역할의 신뢰 정책에 새 리포 경로를 허용**해야 한다.
+  안 하면 모든 배포가 OIDC 인증에서 실패한다.
 
 ## 스키마
 
