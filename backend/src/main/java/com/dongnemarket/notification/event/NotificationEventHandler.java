@@ -1,8 +1,10 @@
 package com.dongnemarket.notification.event;
 
+import com.dongnemarket.global.common.event.ChatMessageSentEvent;
 import com.dongnemarket.global.common.event.CommentCreatedEvent;
 import com.dongnemarket.global.common.event.ProductPriceChangedEvent;
 import com.dongnemarket.notification.service.NotificationService;
+import com.dongnemarket.notification.service.UnreadBadgePublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,9 +24,12 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class NotificationEventHandler {
 
     private final NotificationService notificationService;
+    private final UnreadBadgePublisher badgePublisher;
 
-    public NotificationEventHandler(NotificationService notificationService) {
+    public NotificationEventHandler(NotificationService notificationService,
+                                    UnreadBadgePublisher badgePublisher) {
         this.notificationService = notificationService;
+        this.badgePublisher = badgePublisher;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -37,5 +42,16 @@ public class NotificationEventHandler {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handlePriceChanged(ProductPriceChangedEvent event) {
         notificationService.notifyPriceChange(event.productId(), event.productTitle());
+    }
+
+    /**
+     * 채팅 메시지 전송 시 수신자의 안읽음 배지를 실시간 갱신한다.
+     * <p>채팅 알림은 저장하지 않고 안읽은 방에서 파생하므로, 여기서는 DB 저장 없이 <b>배지 신호만</b> push한다
+     * (그래서 다른 핸들러와 달리 {@code REQUIRES_NEW} 트랜잭션이 불필요). 메시지 커밋 후 처리되므로
+     * 수신자가 재조회하면 새 메시지가 이미 안읽음 카운트에 반영돼 있다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleChatMessageSent(ChatMessageSentEvent event) {
+        badgePublisher.pushTo(event.recipientId());
     }
 }

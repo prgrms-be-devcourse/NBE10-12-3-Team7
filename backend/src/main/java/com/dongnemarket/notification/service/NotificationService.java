@@ -31,15 +31,18 @@ public class NotificationService {
     private final ChatService chatService;
     private final FavoriteService favoriteService;
     private final EntityManager entityManager;
+    private final UnreadBadgePublisher badgePublisher;
 
     public NotificationService(NotificationRepository notificationRepository,
                                ChatService chatService,
                                FavoriteService favoriteService,
-                               EntityManager entityManager) {
+                               EntityManager entityManager,
+                               UnreadBadgePublisher badgePublisher) {
         this.notificationRepository = notificationRepository;
         this.chatService = chatService;
         this.favoriteService = favoriteService;
         this.entityManager = entityManager;
+        this.badgePublisher = badgePublisher;
     }
 
     /**
@@ -50,6 +53,7 @@ public class NotificationService {
     @Transactional
     public void notifyComment(Long recipientId, Long productId, String productTitle) {
         coalesceOrSave(recipientId, productId, NotificationType.COMMENT, buildCommentMessage(productTitle));
+        badgePublisher.pushTo(recipientId);
     }
 
     /**
@@ -66,6 +70,7 @@ public class NotificationService {
         recipientIds.addAll(favoriteService.findFavoriteMemberIdsForProduct(productId));
         for (Long recipientId : recipientIds) {
             coalesceOrSave(recipientId, productId, NotificationType.PRICE_CHANGE, message);
+            badgePublisher.pushTo(recipientId);
         }
     }
 
