@@ -13,6 +13,8 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  * <p>{@code /queue}는 user destination({@code convertAndSendToUser} → {@code /user/{id}/queue/**} →
  * {@code /queue/**-user{session}})용이다. 브로커에 {@code /queue}가 없으면 개인 큐 전송이 조용히 유실되므로
  * {@code /topic}과 함께 등록한다(안읽음 배지 등 사용자별 push).
+ * <p>인바운드 채널 인터셉터(공용 JwtChannelInterceptor 등)는 별도 WebSocketMessageBrokerConfigurer 에서 얹는다
+ * (스프링이 모든 configurer 콜백을 실행 — 이 설정은 브로커/엔드포인트만 담당).
  */
 @Configuration
 @EnableWebSocketMessageBroker
