@@ -1,5 +1,7 @@
 package com.dongnemarket.auction.service;
 
+import com.dongnemarket.auction.dto.AuctionCreateRequest;
+import com.dongnemarket.auction.dto.AuctionResponse;
 import com.dongnemarket.auction.entity.Auction;
 import com.dongnemarket.auction.repository.AuctionRepository;
 import com.dongnemarket.global.exception.BusinessException;
@@ -17,6 +19,15 @@ public class AuctionService {
 
     public AuctionService(AuctionRepository auctionRepository) {
         this.auctionRepository = auctionRepository;
+    }
+
+    /** 경매 등록: 인증된 판매자(sellerId) 명의로 진행 중 경매를 만든다. */
+    @Transactional
+    public AuctionResponse create(Long sellerId, AuctionCreateRequest request) {
+        Auction auction = Auction.create(
+                sellerId, request.getTitle(), request.getImageUrl(), request.getDescription(),
+                request.getStartPrice(), request.getEndAt());
+        return AuctionResponse.from(auctionRepository.save(auction));
     }
 
     /**

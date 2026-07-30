@@ -16,6 +16,9 @@ public class Auction extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "seller_id", nullable = false)
+    private Long sellerId;                // 경매 등록자(판매자) memberId — 낙찰 대금 수령자
+
     @Column(nullable = false, length = 100)
     private String title;
 
@@ -44,7 +47,9 @@ public class Auction extends BaseTimeEntity {
     protected Auction() {
     }
 
-    private Auction(String title, String imageUrl, String description, BigDecimal startPrice, LocalDateTime endAt) {
+    private Auction(Long sellerId, String title, String imageUrl, String description,
+                    BigDecimal startPrice, LocalDateTime endAt) {
+        this.sellerId = sellerId;
         this.title = title;
         this.imageUrl = imageUrl;
         this.description = description;
@@ -53,10 +58,10 @@ public class Auction extends BaseTimeEntity {
         this.status = AuctionStatus.ONGOING;
     }
 
-    /** 경매 등록: 시작가·종료시각으로 진행 중(ONGOING) 상태 생성. */
-    public static Auction create(String title, String imageUrl, String description,
+    /** 경매 등록: 판매자·시작가·종료시각으로 진행 중(ONGOING) 상태 생성. */
+    public static Auction create(Long sellerId, String title, String imageUrl, String description,
                                  BigDecimal startPrice, LocalDateTime endAt) {
-        return new Auction(title, imageUrl, description, startPrice, endAt);
+        return new Auction(sellerId, title, imageUrl, description, startPrice, endAt);
     }
 
     /** 입찰: 진행 중이고 현재가보다 높을 때만 최고가·최고입찰자를 갱신한다. */
@@ -72,6 +77,7 @@ public class Auction extends BaseTimeEntity {
     }
 
     public Long getId() { return id; }
+    public Long getSellerId() { return sellerId; }
     public String getTitle() { return title; }
     public String getImageUrl() { return imageUrl; }
     public String getDescription() { return description; }
