@@ -1,6 +1,10 @@
 # backend — Spring Boot API 서버
 
-마켓온의 API 서버. **Spring Boot 3.5 / Java 21**, 도메인별 패키지 + 계층형 구조.
+마켓온의 API 서버. **Spring Boot 3.5 / Java 21 + Kotlin 2.2**, 도메인별 패키지 + 계층형 구조.
+
+> 🔄 **Java → Kotlin 마이그레이션 진행 중.** 두 언어가 공존한다 —
+> `src/main/java`(남은 것)와 `src/main/kotlin`(전환된 것)을 함께 컴파일한다.
+> 전환이 끝나면 `java` 소스셋을 삭제한다. 진행 상황과 규칙은 아래 [Kotlin 마이그레이션](#kotlin-마이그레이션) 참고.
 
 > 이 문서는 `backend/`를 이해하는 진입점이다. 리포 전체는 [../README.md](../README.md), 에이전트 작업 규칙은 [../AGENTS.md](../AGENTS.md).
 
@@ -8,7 +12,7 @@
 
 | | |
 |---|---|
-| 프레임워크 | Spring Boot 3.5, Java 21 |
+| 프레임워크 | Spring Boot 3.5, Java 21 + **Kotlin 2.2**(전환 중, 공존) |
 | 보안 | Spring Security + JWT |
 | 영속성 | JPA(Hibernate), MySQL 8 / 테스트는 H2 |
 | 스키마 | **Flyway** 마이그레이션 (`src/main/resources/db/migration/`). 운영은 `ddl-auto: validate` |
@@ -17,7 +21,8 @@
 
 ## 도메인 지도
 
-패키지 루트는 `com.dongnemarket` (`src/main/java/com/dongnemarket/`).
+패키지 루트는 `com.dongnemarket` — 전환 여부에 따라 `src/main/java/com/dongnemarket/`
+또는 `src/main/kotlin/com/dongnemarket/` 에 있다(패키지 경로는 동일).
 **작업은 자기 도메인 패키지 안에서만** 한다.
 
 | 도메인 | API 베이스 | 책임 |
@@ -48,6 +53,51 @@ Controller → Service → Repository → Entity/DTO
 - **Service** — 비즈니스 로직·검증·트랜잭션. 예외는 `BusinessException(ErrorCode)`.
 - **Repository** — DB 접근만.
 - **Entity를 API 응답으로 직접 반환 금지** — Request/Response DTO를 분리한다.
+
+## Kotlin 마이그레이션
+
+Java → Kotlin 전환을 도메인 단위로 진행한다. 전환된 파일은 `src/main/kotlin`, 남은 파일은
+`src/main/java` — 두 소스셋을 함께 컴파일하므로 **한 파일씩 옮길 수 있다.**
+
+### 빌드 설정 (팀장만 수정)
+
+`build.gradle` 의 Kotlin 플러그인은 전부 "Kotlin 클래스가 기본 `final`"이라 생기는 문제를 푸는 장치다.
+
+| 플러그인 | 없으면 |
+|---|---|
+| `plugin.spring` (allopen) | CGLIB 프록시 불가 → **`@Transactional` 이 런타임에 조용히 안 걸린다** |
+| `plugin.jpa` (noarg) | 엔티티 기본 생성자 없음 → JPA 인스턴스화 실패 |
+| `allOpen { @Entity, @MappedSuperclass, @Embeddable }` | 엔티티가 `final` → **지연 로딩 프록시 실패** |
+| `jackson-module-kotlin` | `data class` DTO 역직렬화 실패 |
+
+### 전환 시 규칙
+
+- **엔티티에 `data class` 금지** — `equals`/`hashCode` 가 지연 로딩을 건드리고 JPA 동일성과 어긋난다. 항상 `class`.
+- **주 생성자의 JPA 어노테이션은 `@field:`** — 생략하면 생성자 파라미터에 붙어 **JPA 가 매핑을 무시**한다.
+- **엔티티 프로퍼티는 `private set` 대신 `protected set`** — allOpen 이 프로퍼티도 open 으로 만들어
+  Kotlin 이 open 프로퍼티의 private setter 를 금지한다(컴파일 에러).
+- **Java 에서 호출되는 팩토리에 `@JvmStatic`**, 기본 인자가 있는 생성자/함수에 **`@JvmOverloads`**.
+  없으면 Java 호출부가 깨진다(`Foo.Companion.bar()` / 인자 적은 호출 불가).
+- **공개 API 의 nullability 를 임의로 조이지 않는다.** non-null `Long` 은 primitive `long` 이 되어
+  아직 Java 인 호출부에서 **자동 언박싱 NPE** 를 낸다. 원본 시그니처를 그대로 옮기고, 전환 완료 후 별도 패스에서 조인다.
+- `record` → `data class` 는 **접근자 이름이 바뀐다**(`productId()` → `getProductId()`).
+  깨진 호출부는 grep 말고 `./gradlew compileJava` 로 찾는다.
+
+### 절차
+
+```bash
+# 1) .kt 작성 → 2) 해당 .java 삭제 → 3) 컴파일러가 깨진 호출부를 알려준다
+./gradlew compileKotlin compileJava
+./gradlew test                # 기존 테스트가 동작 등가성을 검증한다
+./gradlew ktlintFormat        # 포매팅 자동 교정 (ktlint 는 현재 경고만)
+```
+
+진척 확인:
+
+```bash
+find src/main/java -name '*.java' | wc -l    # 남은 것
+find src/main/kotlin -name '*.kt' | wc -l    # 전환된 것
+```
 
 ## 정본 (지어내지 말고 여기서 확인)
 
