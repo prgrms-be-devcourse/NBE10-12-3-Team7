@@ -10,10 +10,14 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @Tag(name = "Auction", description = "실시간 경매 API")
 @RestController
@@ -34,5 +38,17 @@ public class AuctionController {
         AuctionResponse response = auctionService.create(memberId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "경매가 등록되었습니다.", response));
+    }
+
+    @Operation(summary = "경매 목록", description = "등록된 경매를 최신순으로 조회합니다.")
+    @GetMapping
+    public ApiResponse<List<AuctionResponse>> getAuctions() {
+        return ApiResponse.success(auctionService.getAuctions());
+    }
+
+    @Operation(summary = "경매 상세", description = "경매 하나의 현재 상태(현재가·최고입찰자 등)를 조회합니다.")
+    @GetMapping("/{auctionId}")
+    public ApiResponse<AuctionResponse> getAuction(@PathVariable Long auctionId) {
+        return ApiResponse.success(auctionService.getAuction(auctionId));
     }
 }

@@ -2,7 +2,9 @@ package com.dongnemarket.auction.service;
 
 import com.dongnemarket.auction.dto.AuctionCreateRequest;
 import com.dongnemarket.auction.dto.AuctionResponse;
+import com.dongnemarket.auction.dto.AuctionStateResponse;
 import com.dongnemarket.auction.entity.Auction;
+import com.dongnemarket.auction.entity.AuctionStatus;
 import com.dongnemarket.auction.repository.AuctionRepository;
 import com.dongnemarket.global.exception.BusinessException;
 import com.dongnemarket.global.exception.ErrorCode;
@@ -11,6 +13,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class AuctionService {
@@ -28,6 +33,22 @@ public class AuctionService {
                 sellerId, request.getTitle(), request.getImageUrl(), request.getDescription(),
                 request.getStartPrice(), request.getEndAt());
         return AuctionResponse.from(auctionRepository.save(auction));
+    }
+
+    /** 목록 조회(최신순). */
+    @Transactional(readOnly = true)
+    public List<AuctionResponse> getAuctions() {
+        return auctionRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(AuctionResponse::from)
+                .toList();
+    }
+
+    /** 상세 조회: 새 구독자가 초기 현재가를 알기 위해서도 사용. */
+    @Transactional(readOnly = true)
+    public AuctionResponse getAuction(Long auctionId) {
+        Auction auction = auctionRepository.findById(auctionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUCTION_NOT_FOUND));
+        return AuctionResponse.from(auction);
     }
 
     /**
@@ -48,5 +69,17 @@ public class AuctionService {
         } catch (OptimisticLockingFailureException e) {
             throw new BusinessException(ErrorCode.AUCTION_BID_CONFLICT);
         }
+    }
+
+    /** 종료시각이 지난 진행 중 경매를 모두 ENDED로 전이하고, 그 최종 상태를 반환한다(스케줄러가 호출). */
+    @Transactional
+    public List<AuctionStateResponse> closeExpiredAuctions() {
+        List<Auction> expired = auctionRepository.findByStatusAndEndAtBefore(AuctionStatus.ONGOING, LocalDateTime.now());
+        List<AuctionStateResponse> closed = new ArrayList<>();
+        for (Auction auction : expired) {
+            auction.close();
+            closed.add(AuctionStateResponse.from(auction));
+        }
+        return closed;
     }
 }

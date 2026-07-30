@@ -32,7 +32,7 @@ public class Auction extends BaseTimeEntity {
     private BigDecimal currentPrice;      // 시작가로 초기화, 입찰마다 최고가로 갱신
 
     @Column(name = "highest_bidder_id")
-    private Long highestBidderId;         // 최고가 입찰자 memberId (아직 없으면 null)
+    private Long highestBidderId;         // 최고가 입찰자 memberId (아직 없으면 null) = 낙찰자 후보
 
     @Column(nullable = false)
     private LocalDateTime endAt;          // 고정 종료 시각
@@ -74,6 +74,13 @@ public class Auction extends BaseTimeEntity {
         }
         this.currentPrice = amount;
         this.highestBidderId = bidderId;
+    }
+
+    /** 종료: 진행 중이던 경매를 종료 상태로 전이한다(이 시점의 highestBidderId 가 낙찰자). */
+    public void close() {
+        if (this.status == AuctionStatus.ONGOING) {
+            this.status = AuctionStatus.ENDED;
+        }
     }
 
     public Long getId() { return id; }
