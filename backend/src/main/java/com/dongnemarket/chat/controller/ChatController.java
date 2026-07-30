@@ -3,6 +3,7 @@ package com.dongnemarket.chat.controller;
 import com.dongnemarket.chat.dto.ChatMessageCreateRequest;
 import com.dongnemarket.chat.dto.ChatMessagePageResponse;
 import com.dongnemarket.chat.dto.ChatMessageResponse;
+import com.dongnemarket.chat.dto.ChatReadReceiptResponse;
 import com.dongnemarket.chat.dto.ChatRoomCreateRequest;
 import com.dongnemarket.chat.dto.ChatRoomDetailResponse;
 import com.dongnemarket.chat.dto.ChatRoomListResponse;
@@ -83,7 +84,13 @@ public class ChatController {
     public ResponseEntity<ApiResponse<Void>> markAsRead(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long roomId) {
-        chatService.markRoomAsRead(memberId, roomId);
+        Long lastReadMessageId = chatService.markRoomAsRead(memberId, roomId);
+        // 읽음 지점이 실제로 전진했을 때만(재-read·빈 방이면 null) 방 구독자에게 읽음 영수증 push.
+        // markRoomAsRead는 @Transactional이라 여기(반환 후)는 이미 커밋된 시점 → sendMessage와 동일 패턴.
+        if (lastReadMessageId != null) {
+            messagingTemplate.convertAndSend(CHAT_ROOM_TOPIC_PREFIX + roomId + "/read",
+                    ChatReadReceiptResponse.of(roomId, memberId, lastReadMessageId));
+        }
         return ResponseEntity.ok(ApiResponse.<Void>success("읽음 처리되었습니다.", null));
     }
 }
