@@ -9,11 +9,13 @@ import com.dongnemarket.chat.entity.ChatRoom;
 import com.dongnemarket.chat.repository.ChatMessageRepository;
 import com.dongnemarket.chat.repository.ChatRoomRepository;
 import com.dongnemarket.chat.repository.RoomUnreadCount;
+import com.dongnemarket.global.common.event.ChatMessageSentEvent;
 import com.dongnemarket.global.exception.BusinessException;
 import com.dongnemarket.global.exception.ErrorCode;
 import com.dongnemarket.member.entity.Member;
 import com.dongnemarket.product.service.ProductService;
 import jakarta.persistence.EntityManager;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Limit;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -37,17 +39,20 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final ProductService productService;
     private final EntityManager entityManager;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ChatService(ChatRoomCreator chatRoomCreator,
                        ChatRoomRepository chatRoomRepository,
                        ChatMessageRepository chatMessageRepository,
                        ProductService productService,
-                       EntityManager entityManager) {
+                       EntityManager entityManager,
+                       ApplicationEventPublisher eventPublisher) {
         this.chatRoomCreator = chatRoomCreator;
         this.chatRoomRepository = chatRoomRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.productService = productService;
         this.entityManager = entityManager;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -98,17 +103,23 @@ public class ChatService {
      * 방의 메시지를 모두 읽음 처리한다 — 내 읽음 지점을 방의 최신 메시지 id까지 전진시킨다(참여자만 가능).
      * 메시지가 없는 방은 전진할 지점이 없어 아무것도 하지 않는다(안읽음은 어차피 0).
      * 읽음 지점 전진은 더티체킹으로 커밋된다.
+     * <p>실제로 읽음 지점이 <b>전진했을 때만</b> 그 지점(최신 메시지 id)을 반환하고, 이미 그 이후를 읽은
+     * 상태(재-read)이거나 빈 방이면 {@code null}을 반환한다. 컨트롤러는 이 값이 있을 때만 읽음 영수증을
+     * push해, 방을 열 때마다 무의미한 영수증이 쏟아지는 것을 막는다(단조 전진 가드는 엔티티가 이미 보장).
      */
     @Transactional
-    public void markRoomAsRead(Long memberId, Long roomId) {
+    public Long markRoomAsRead(Long memberId, Long roomId) {
         ChatRoom room = chatRoomRepository.findById(roomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND));
         validateParticipant(room, memberId);
 
+        Long before = room.lastReadMessageIdOf(memberId);
         Long latestMessageId = chatMessageRepository.findMaxIdByRoom(roomId);
-        if (latestMessageId != null) {
+        if (latestMessageId != null && (before == null || latestMessageId > before)) {
             room.markRead(memberId, latestMessageId);
+            return latestMessageId;
         }
+        return null;
     }
 
     /**
@@ -162,7 +173,22 @@ public class ChatService {
 
         Member sender = entityManager.getReference(Member.class, memberId);
         ChatMessage saved = chatMessageRepository.save(ChatMessage.of(room, sender, content));
+
+        // 수신자(상대방)의 안읽음 배지를 실시간 갱신하도록 신호를 발행한다. 커밋 후(AFTER_COMMIT) 처리되므로
+        // 재조회 시 이 메시지가 이미 반영돼 있다. 자기 채팅은 불가라 수신자는 항상 상대방이다(프록시 id 접근).
+        eventPublisher.publishEvent(new ChatMessageSentEvent(opponentOf(room, memberId).getId()));
         return ChatMessageResponse.from(saved);
+    }
+
+    /**
+     * 요청자가 방 참여자(구매자·판매자)인지 여부. WebSocket 토픽 구독 인가(ChatSubscribeInterceptor)용.
+     * 방이 없으면 {@code false}(구독 거부).
+     */
+    @Transactional(readOnly = true)
+    public boolean isParticipant(Long memberId, Long roomId) {
+        return chatRoomRepository.findById(roomId)
+                .map(room -> room.isParticipant(memberId))
+                .orElse(false);
     }
 
     private void validateParticipant(ChatRoom room, Long memberId) {

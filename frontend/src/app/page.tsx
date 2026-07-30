@@ -13,6 +13,8 @@ interface Section {
   titleLines: Line[]
   descLines: Line[]
   cta?: boolean
+  bg?: string
+  bgOpacity?: number
 }
 
 const SECTIONS: Section[] = [
@@ -23,11 +25,14 @@ const SECTIONS: Section[] = [
       '오신 걸 환영해요',
     ],
     descLines: ['스크롤을 내려서 조금 더 알아볼까요?'],
+    bg: '/marketon-hero.png',
   },
   {
     eyebrow: ['🏘️ 우리 동네 중고거래'],
     titleLines: ['가까운 이웃과 함께하는', '따뜻한 거래 플랫폼이에요'],
     descLines: ['필요 없는 물건은 나누고,', '필요한 물건은 우리 동네에서 합리적으로 만나보세요.'],
+    bg: '/marketon-section2.png',
+    bgOpacity: 0.4,
   },
   {
     eyebrow: ['💬 채팅 · 관심 · 동네 인증'],
@@ -114,6 +119,16 @@ export default function Home() {
           ref={el => { sectionRefs.current[i] = el }}
           className={`${styles.section}${visible[i] ? ' ' + styles.visible : ''}`}
         >
+          {section.bg && (
+            <div
+              className={styles.heroBg}
+              style={{
+                backgroundImage: `url(${section.bg})`,
+                ...(section.bgOpacity != null ? { '--hero-opacity': section.bgOpacity } as React.CSSProperties : {}),
+              }}
+              aria-hidden="true"
+            />
+          )}
           <span className={styles.eyebrow}>
             <Stagger lines={section.eyebrow} stagger={stagger} startIndex={eyebrowStart} />
           </span>

@@ -33,7 +33,7 @@ function formatNotifTime(iso: string) {
 const NAV_LINKS = [
   { href: '/products',     label: '상품목록' },
   /* 실시간 딜: 백엔드 미구현. 버튼만 먼저 노출하고 클릭해도 아무 화면도 뜨지 않는다(기능 구현 후 연결 예정). */
-  { href: '#',             label: '실시간 딜', badge: 'NEW', disabled: true },
+  { href: '#',             label: '실시간 딜', disabled: true },
   { href: '/products/new', label: '상품등록' },
   { href: '/my-products',  label: '나의 마켓온', match: ['/my-products', '/favorites'] },
   { href: '/my-reports',   label: '신고내역' },
@@ -157,11 +157,8 @@ export default function Header() {
           Market<span>ON</span>
         </Link>
         <nav className="main-nav">
-          {NAV_LINKS.map(({ href, label, match, badge, disabled }) => {
-            const cls = [
-              (match ?? [href]).includes(pathname ?? '') ? 'on' : '',
-              badge ? 'new' : '',
-            ].filter(Boolean).join(' ')
+          {NAV_LINKS.map(({ href, label, match, disabled }) => {
+            const cls = (match ?? [href]).includes(pathname ?? '') ? 'on' : ''
             if (disabled) {
               return (
                 <a key={label} href="#" className={cls} onClick={e => e.preventDefault()}>

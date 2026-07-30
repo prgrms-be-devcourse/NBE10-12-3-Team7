@@ -3,6 +3,7 @@ package com.dongnemarket.chat.controller;
 import com.dongnemarket.chat.dto.ChatMessageCreateRequest;
 import com.dongnemarket.chat.dto.ChatMessagePageResponse;
 import com.dongnemarket.chat.dto.ChatMessageResponse;
+import com.dongnemarket.chat.dto.ChatReadReceiptResponse;
 import com.dongnemarket.chat.dto.ChatRoomCreateRequest;
 import com.dongnemarket.chat.dto.ChatRoomDetailResponse;
 import com.dongnemarket.chat.dto.ChatRoomListResponse;
@@ -13,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,10 +29,15 @@ import java.util.List;
 @RestController
 public class ChatController {
 
-    private final ChatService chatService;
+    /** 채팅방 토픽 목적지 접두사. 구독 인가(ChatSubscribeInterceptor)와 반드시 동일해야 한다. */
+    private static final String CHAT_ROOM_TOPIC_PREFIX = "/topic/chat-rooms/";
 
-    public ChatController(ChatService chatService) {
+    private final ChatService chatService;
+    private final SimpMessagingTemplate messagingTemplate;
+
+    public ChatController(ChatService chatService, SimpMessagingTemplate messagingTemplate) {
         this.chatService = chatService;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @Operation(summary = "채팅방 연결", description = "상품에 대한 채팅방을 조회하거나 없으면 생성한다(get-or-create). 신규·기존 모두 200.")
@@ -66,6 +73,8 @@ public class ChatController {
             @PathVariable Long roomId,
             @Valid @RequestBody ChatMessageCreateRequest request) {
         ChatMessageResponse response = chatService.sendMessage(memberId, roomId, request.getContent());
+        // sendMessage는 @Transactional이라 여기(반환 후)는 이미 커밋된 시점 → 방 구독자에게 push. B안(REST 유지 + broadcast).
+        messagingTemplate.convertAndSend(CHAT_ROOM_TOPIC_PREFIX + roomId, response);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "메시지를 전송했습니다.", response));
     }
@@ -75,7 +84,13 @@ public class ChatController {
     public ResponseEntity<ApiResponse<Void>> markAsRead(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long roomId) {
-        chatService.markRoomAsRead(memberId, roomId);
+        Long lastReadMessageId = chatService.markRoomAsRead(memberId, roomId);
+        // 읽음 지점이 실제로 전진했을 때만(재-read·빈 방이면 null) 방 구독자에게 읽음 영수증 push.
+        // markRoomAsRead는 @Transactional이라 여기(반환 후)는 이미 커밋된 시점 → sendMessage와 동일 패턴.
+        if (lastReadMessageId != null) {
+            messagingTemplate.convertAndSend(CHAT_ROOM_TOPIC_PREFIX + roomId + "/read",
+                    ChatReadReceiptResponse.of(roomId, memberId, lastReadMessageId));
+        }
         return ResponseEntity.ok(ApiResponse.<Void>success("읽음 처리되었습니다.", null));
     }
 }
