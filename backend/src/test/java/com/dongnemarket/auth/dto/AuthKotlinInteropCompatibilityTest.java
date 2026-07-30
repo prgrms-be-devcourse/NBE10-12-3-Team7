@@ -290,18 +290,75 @@ class AuthKotlinInteropCompatibilityTest {
 
 		@Test
 		@DisplayName("유효한 값이면 위반이 없다")
-		void validRequestHasNoViolations() {
+		void validRequestHasNoViolations() throws Exception {
 			assertThat(validator.validate(new SignupRequest("a@b.com", "Password1!ok", "nick", true, true))).isEmpty();
 			assertThat(validator.validate(new PasswordResetConfirmRequest("tok", "Password1!ok"))).isEmpty();
-			assertThat(validator.validate(new OAuthLoginRequest("code", "state"))).isEmpty();
+			assertThat(validator.validate(oauthLoginRequest("{\"code\":\"c\",\"state\":\"s\"}"))).isEmpty();
 		}
 
 		@Test
-		@DisplayName("OAuthLoginRequest 의 @NotBlank 두 개가 유지된다")
-		void oauthLoginRequestConstraints() {
-			assertThat(violatedProperties(validator.validate(new OAuthLoginRequest("", ""))))
+		@DisplayName("OAuthLoginRequest 의 @NotBlank 두 개가 유지된다 — 빈 값·필드 누락 모두 동일하게 검출된다")
+		void oauthLoginRequestConstraints() throws Exception {
+			assertThat(violatedProperties(validator.validate(oauthLoginRequest("{\"code\":\"\",\"state\":\"\"}"))))
+					.containsExactlyInAnyOrder("code", "state");
+			// 필드가 아예 빠지면 null → @NotBlank 가 동일하게 위반을 낸다(원본 Java 동작과 같다).
+			assertThat(violatedProperties(validator.validate(oauthLoginRequest("{}"))))
+					.containsExactlyInAnyOrder("code", "state");
+			// 명시적 null 도 마찬가지다.
+			assertThat(violatedProperties(validator.validate(oauthLoginRequest("{\"code\":null,\"state\":null}"))))
 					.containsExactlyInAnyOrder("code", "state");
 		}
+	}
+
+	/**
+	 * `OAuthLoginRequest` 는 다른 요청 DTO 와 달리 원본 Java 구조(protected 무인자 생성자 + private 필드)를
+	 * 그대로 유지했다. 주 생성자 프로퍼티로 옮기면 원본에 없던 public 2인자 생성자가 공개 API 에 추가되기 때문이다.
+	 * 이 클래스가 그 결정을 고정한다.
+	 */
+	@Nested
+	@DisplayName("OAuthLoginRequest 생성자 표면")
+	class OAuthLoginRequestConstructorSurface {
+
+		@Test
+		@DisplayName("public 생성자가 하나도 없다 — 원본과 동일하게 공개 표면이 넓어지지 않았다")
+		void noPublicConstructorAdded() {
+			assertThat(OAuthLoginRequest.class.getConstructors()).isEmpty();
+		}
+
+		@Test
+		@DisplayName("protected 무인자 생성자가 유일한 생성자다")
+		void onlyProtectedNoArgConstructor() throws Exception {
+			java.lang.reflect.Constructor<?>[] declared = OAuthLoginRequest.class.getDeclaredConstructors();
+			assertThat(declared).hasSize(1);
+			assertThat(declared[0].getParameterCount()).isZero();
+			assertThat(java.lang.reflect.Modifier.isProtected(declared[0].getModifiers())).isTrue();
+		}
+
+		@Test
+		@DisplayName("클래스가 final 이 아니다 — 원본 Java 클래스와 같다")
+		void classIsNotFinal() {
+			assertThat(java.lang.reflect.Modifier.isFinal(OAuthLoginRequest.class.getModifiers())).isFalse();
+		}
+
+		@Test
+		@DisplayName("Jackson 역직렬화는 기존과 동일하게 동작한다 (무인자 생성자 + 필드 주입)")
+		void jacksonStillDeserializes() throws Exception {
+			OAuthLoginRequest request = oauthLoginRequest("{\"code\":\"auth-code\",\"state\":\"state-1\"}");
+			assertThat(request.getCode()).isEqualTo("auth-code");
+			assertThat(request.getState()).isEqualTo("state-1");
+		}
+
+		@Test
+		@DisplayName("필드가 빠지거나 null 이면 null 이다 — 예외로 바뀌지 않았다")
+		void absentOrNullFieldsBecomeNull() throws Exception {
+			assertThat(oauthLoginRequest("{}").getCode()).isNull();
+			assertThat(oauthLoginRequest("{}").getState()).isNull();
+			assertThat(oauthLoginRequest("{\"code\":null,\"state\":null}").getCode()).isNull();
+		}
+	}
+
+	private OAuthLoginRequest oauthLoginRequest(String json) throws Exception {
+		return objectMapper.readValue(json, OAuthLoginRequest.class);
 	}
 
 	private static Set<String> methodNames(Class<?> type) {
