@@ -2,11 +2,15 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { Client } from '@stomp/stompjs'
 import { useEffect, useRef, useState } from 'react'
 import { apiFetch, logout } from '@/lib/apiClient'
 import { AUTH_CHANGED_EVENT, getAccessToken } from '@/lib/auth'
 
-const UNREAD_POLL_MS = 20000
+/* 로컬 dev는 Next 서버(:3000)가 WebSocket 업그레이드를 프록시하지 못해 백엔드에 직접 접속한다(chat 페이지와 동일). */
+const WS_ORIGIN = process.env.NEXT_PUBLIC_WS_ORIGIN ?? 'ws://localhost:8080'
+/* 개인 큐(/user/queue/notifications) 신호로 즉시 갱신되므로, 폴링은 재연결 공백을 메우는 백업 용도로 주기를 늘린다. */
+const UNREAD_POLL_MS = 60000
 
 interface NotificationItem {
   type: 'COMMENT' | 'CHAT' | 'PRICE_CHANGE'
@@ -56,23 +60,43 @@ export default function Header() {
     return () => window.removeEventListener(AUTH_CHANGED_EVENT, handler)
   }, [])
 
+  function fetchUnreadCount() {
+    apiFetch('/api/notifications/unread-count')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data == null) return
+        setHasUnreadNotification((data?.data?.unreadCount ?? 0) > 0)
+      })
+      .catch(() => {})
+  }
+
+  /* 백업 폴링 — 개인 큐 신호를 놓쳤을 때(재연결 공백 등) 갱신을 메운다. */
+  useEffect(() => {
+    if (!loggedIn) return
+    fetchUnreadCount()
+    const timer = setInterval(fetchUnreadCount, UNREAD_POLL_MS)
+    return () => clearInterval(timer)
+  }, [loggedIn])
+
+  /* 실시간 배지 갱신 — 개인 큐(/user/queue/notifications)로 알림 신호가 오면 정확한 카운트를 재조회한다. */
   useEffect(() => {
     if (!loggedIn) return
 
-    let cancelled = false
-    function fetchUnreadCount() {
-      apiFetch('/api/notifications/unread-count')
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          if (cancelled || data == null) return
-          setHasUnreadNotification((data?.data?.unreadCount ?? 0) > 0)
+    const client = new Client({
+      brokerURL: `${WS_ORIGIN}/ws`,
+      reconnectDelay: 3000,
+      beforeConnect: () => {
+        client.connectHeaders = { Authorization: `Bearer ${getAccessToken() ?? ''}` }
+      },
+      onConnect: () => {
+        client.subscribe('/user/queue/notifications', () => {
+          fetchUnreadCount()
         })
-        .catch(() => {})
-    }
+      },
+    })
+    client.activate()
 
-    fetchUnreadCount()
-    const timer = setInterval(fetchUnreadCount, UNREAD_POLL_MS)
-    return () => { cancelled = true; clearInterval(timer) }
+    return () => { client.deactivate() }
   }, [loggedIn])
 
   useEffect(() => {
