@@ -29,7 +29,7 @@
 .nm span { color: var(--text-muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
 .logoutBtn {
   padding: 9px 16px; border: 1px solid #512e43; border-radius: 999px;
-  background: #3a2230; color: #e3d2db; font-size: 14px; font-weight: 600;
+  background: #3a2230; color: #fff; font-size: 14px; font-weight: 600;
   font-family: inherit; cursor: pointer; transition: background .15s, color .15s;
 }
 .logoutBtn:hover { background: #512e43; color: #fff; }
@@ -41,8 +41,9 @@
 .narrow { max-width: 760px; }
 
 /* 통계 카드 */
-.statGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-bottom: 22px; }
-.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); }
+.statGrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 22px; }
+@media (max-width: 900px) { .statGrid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); text-align: center; }
 .statL { color: var(--text-muted); font-size: 13px; margin-bottom: 9px; }
 .statN { font-size: 27px; font-weight: 800; letter-spacing: -.03em; color: var(--primary-d); }
 
@@ -58,6 +59,7 @@
 .field { margin-bottom: 15px; }
 .field label { display: block; font-weight: 700; font-size: 13px; margin-bottom: 7px; }
 .field .hint { font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+.hint { font-size: 13px; color: var(--text-muted); }
 .field input, .field select, .field textarea {
   width: 100%; padding: 11px 13px; border: 1px solid var(--border); border-radius: 11px;
   font-size: 14px; font-family: inherit; background: var(--bg); color: var(--text); outline: none;
@@ -67,6 +69,19 @@
 .field textarea { resize: vertical; min-height: 90px; }
 .filter { display: flex; gap: 11px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 18px; }
 .filter .field { margin-bottom: 0; flex: 1; min-width: 160px; }
+.filterBtn { height: 45px; padding: 0 18px; }
+
+.statusToggle {
+  display: flex; height: 45px; gap: 3px; padding: 3px;
+  border: 1px solid var(--border); border-radius: 11px; background: var(--surface-2);
+}
+.statusToggleBtn {
+  flex: 1; border: none; border-radius: 9px; background: transparent;
+  color: var(--text-muted); font-size: 13px; font-weight: 700; font-family: inherit;
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.statusToggleBtn:hover { color: var(--text); }
+.statusToggleOn, .statusToggleOn:hover { background: var(--primary); color: #fff; }
 
 /* 테이블 */
 .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; }

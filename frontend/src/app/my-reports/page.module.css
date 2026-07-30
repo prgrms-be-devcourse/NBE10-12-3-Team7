@@ -27,6 +27,22 @@
   font-size: 13.5px;
 }
 
+.sectionHead {
+  margin-bottom: 14px;
+  animation: mo-rise .5s cubic-bezier(.2,.7,.3,1) backwards;
+}
+.sectionHead h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+}
+.sectionHead p {
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
 /* 통계 카드 */
 .statsCard {
   display: flex;
@@ -38,7 +54,7 @@
   border-radius: 18px;
   padding: 22px 26px;
   box-shadow: var(--shadow);
-  margin-bottom: 18px;
+  margin-bottom: 36px;
   animation: mo-rise .55s cubic-bezier(.2,.7,.3,1) backwards;
   animation-delay: .02s;
 }

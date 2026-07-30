@@ -18,16 +18,18 @@ export const MANNER_SCORE_BAND_LABEL: Record<MannerScoreBand, string> = {
 
 /** 신고 통계 "처리중" 색과 항상 동일해야 하는 GOOD(우수) 등급은 라이트 모드 값으로 테마 무관 고정한다. */
 export const MANNER_SCORE_BAND_COLOR: Record<MannerScoreBand, string> = {
-  DANGER: '#b6adb3',
-  WARNING: '#e6c878',
+  DANGER: '#3c3f42',
+  WARNING: '#b8860b',
   DEFAULT: '#e85d9e',
   GOOD: '#2f77e0',
 }
 
-/** 게이지 바에 쓰는 등급별 (연한 톤 → 진한 톤) 그라데이션. */
+/** 게이지 바에 쓰는 등급별 (연한 톤 → 진한 톤) 그라데이션.
+ * DANGER·WARNING은 라이트 모드 배경(--neutral-soft 등 옅은 톤)과 대비가 약해 보여서 진하게 조정했다.
+ * DANGER는 차콜 톤, WARNING은 채도를 높인 골드 톤이다. */
 export const MANNER_SCORE_BAND_GRADIENT: Record<MannerScoreBand, [string, string]> = {
-  DANGER: ['#d9d3d6', '#b6adb3'],
-  WARNING: ['#f2e2ae', '#e6c878'],
+  DANGER: ['#9a9da0', '#3c3f42'],
+  WARNING: ['#f0c94a', '#b8860b'],
   DEFAULT: ['#f5b3d1', '#e85d9e'],
   GOOD: ['#bcd6fb', '#2f77e0'],
 }

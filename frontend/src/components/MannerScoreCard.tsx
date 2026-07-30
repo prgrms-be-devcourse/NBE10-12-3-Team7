@@ -100,10 +100,10 @@ export default function MannerScoreCard() {
           <div className={styles.gaugeTick} style={{ left: '36.5%' }} />
         </div>
         <div className={styles.gaugeTicks}>
-          <span>0</span>
-          <span>20</span>
-          <span>36.5(기본)</span>
-          <span>100</span>
+          <span className={styles.gaugeTickLabel} style={{ left: '0%' }}>0</span>
+          <span className={styles.gaugeTickLabel} style={{ left: '20%' }}>20</span>
+          <span className={styles.gaugeTickLabel} style={{ left: '36.5%' }}>36.5(기본)</span>
+          <span className={styles.gaugeTickLabel} style={{ left: '100%' }}>100</span>
         </div>
         <div className={styles.legendKey}>
           {BANDS.map(b => (
