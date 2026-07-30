@@ -9,11 +9,13 @@ import com.dongnemarket.chat.entity.ChatRoom;
 import com.dongnemarket.chat.repository.ChatMessageRepository;
 import com.dongnemarket.chat.repository.ChatRoomRepository;
 import com.dongnemarket.chat.repository.RoomUnreadCount;
+import com.dongnemarket.global.common.event.ChatMessageSentEvent;
 import com.dongnemarket.global.exception.BusinessException;
 import com.dongnemarket.global.exception.ErrorCode;
 import com.dongnemarket.member.entity.Member;
 import com.dongnemarket.product.service.ProductService;
 import jakarta.persistence.EntityManager;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Limit;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -37,17 +39,20 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final ProductService productService;
     private final EntityManager entityManager;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ChatService(ChatRoomCreator chatRoomCreator,
                        ChatRoomRepository chatRoomRepository,
                        ChatMessageRepository chatMessageRepository,
                        ProductService productService,
-                       EntityManager entityManager) {
+                       EntityManager entityManager,
+                       ApplicationEventPublisher eventPublisher) {
         this.chatRoomCreator = chatRoomCreator;
         this.chatRoomRepository = chatRoomRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.productService = productService;
         this.entityManager = entityManager;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -168,6 +173,10 @@ public class ChatService {
 
         Member sender = entityManager.getReference(Member.class, memberId);
         ChatMessage saved = chatMessageRepository.save(ChatMessage.of(room, sender, content));
+
+        // 수신자(상대방)의 안읽음 배지를 실시간 갱신하도록 신호를 발행한다. 커밋 후(AFTER_COMMIT) 처리되므로
+        // 재조회 시 이 메시지가 이미 반영돼 있다. 자기 채팅은 불가라 수신자는 항상 상대방이다(프록시 id 접근).
+        eventPublisher.publishEvent(new ChatMessageSentEvent(opponentOf(room, memberId).getId()));
         return ChatMessageResponse.from(saved);
     }
 

@@ -54,6 +54,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *   <li>참여자가 방 토픽을 구독하면 상대의 REST 전송이 push로 수신된다(크라운 주얼).</li>
  *   <li>참여자가 읽으면 읽음 영수증이 방 서브토픽(.../read)으로 push된다.</li>
  *   <li>비참여자의 방 토픽·읽음 영수증 서브토픽 구독은 거부된다(도청 차단).</li>
+ *   <li>메시지를 받으면 수신자의 개인 큐(/user/queue/notifications)로 안읽음 배지 신호가 push된다.</li>
  *   <li>토큰 없는 CONNECT는 거부된다.</li>
  * </ul>
  */
@@ -196,6 +197,24 @@ class ChatWebSocketTest {
 
         assertThat(errorLatch.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
         assertThat(received).isEmpty();
+    }
+
+    @Test
+    @DisplayName("메시지를 받으면 수신자의 개인 큐로 안읽음 배지 신호가 push된다")
+    void recipientReceivesUnreadBadgeSignal() throws Exception {
+        BlockingQueue<Map<String, Object>> received = new LinkedBlockingQueue<>();
+        // 수신자(buyer)는 방과 무관하게 자기 개인 큐 하나만 구독한다.
+        StompSession session = connect(buyerToken, new CountDownLatch(1));
+        session.subscribe("/user/queue/notifications", frameHandler(received));
+        Thread.sleep(500);
+
+        // seller가 메시지를 보내면 → 커밋 후(AFTER_COMMIT) ChatMessageSentEvent → 수신자(buyer) 배지 신호 push.
+        sendMessageViaRest(sellerToken, roomId, "배지 신호 테스트");
+
+        Map<String, Object> payload = received.poll(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        // user destination(/user/queue) 전달 검증 — 브로커에 /queue 미등록 시 조용히 유실됨(WebSocketConfig).
+        assertThat(payload).isNotNull();
+        assertThat(payload.get("type")).isEqualTo("UNREAD_CHANGED");
     }
 
     @Test
