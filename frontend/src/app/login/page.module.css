@@ -98,3 +98,21 @@
 .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
 .oauthCol { display: flex; flex-direction: column; gap: 10px; }
+
+.oauthBtn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%;
+  padding: 13px 18px;
+  border: none;
+  border-radius: 12px;
+  font-size: 14.5px; font-weight: 700; font-family: inherit;
+  cursor: pointer;
+  transition: filter .15s, opacity .15s;
+}
+.oauthBtn:hover:not(:disabled) { filter: brightness(.96); }
+.oauthBtn:active:not(:disabled) { transform: translateY(1px); }
+.oauthBtn:disabled { opacity: .6; cursor: not-allowed; }
+.oauthBtn svg { flex-shrink: 0; }
+
+.kakaoBtn { background: #FEE500; color: #191919; }
+.googleBtn { background: #FFFFFF; color: #191919; border: 1px solid var(--border); }
