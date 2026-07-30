@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/apiClient'
 import { REPORT_REASON_LABEL, type ReportReason } from '@/lib/reportReasons'
 import MannerScoreCard from '@/components/MannerScoreCard'
 import ReportDetailModal from '@/components/ReportDetailModal'
+import ConfirmModal from '@/components/ConfirmModal'
 import styles from './page.module.css'
 
 type ReportType = 'PRODUCT' | 'MEMBER'
@@ -131,6 +132,7 @@ export default function MyReportsPage() {
   const [status, setStatus] = useState<PageStatus>('loading')
   const [errorMsg, setErrorMsg] = useState('')
   const [cancellingId, setCancellingId] = useState<number | null>(null)
+  const [cancelTargetId, setCancelTargetId] = useState<number | null>(null)
   const [productTitles, setProductTitles] = useState<Record<number, string>>({})
   const [detailReportId, setDetailReportId] = useState<number | null>(null)
 
@@ -145,7 +147,7 @@ export default function MyReportsPage() {
   }
 
   async function cancelReport(reportId: number) {
-    if (!window.confirm('이 신고를 취소할까요? 취소 후에는 되돌릴 수 없어요.')) return
+    setCancelTargetId(null)
     setCancellingId(reportId)
     try {
       const res = await apiFetch(`/api/members/me/reports/${reportId}`, { method: 'DELETE' })
@@ -240,6 +242,10 @@ export default function MyReportsPage() {
       </div>
 
       {/* 매너온도 */}
+      <div className={styles.sectionHead}>
+        <h2>매너 온도</h2>
+        <p>다른 사용자와 거래할 때의 매너를 온도로 나타낸 신뢰도 지표예요.</p>
+      </div>
       <MannerScoreCard />
 
       {status === 'loading' && (
@@ -255,6 +261,63 @@ export default function MyReportsPage() {
 
       {status === 'ready' && (
         <>
+          {/* 처리 상태 섹션 타이틀 */}
+          <div className={styles.sectionHead}>
+            <h2>처리 상태</h2>
+            <p>내가 접수한 신고가 지금 어떤 단계에 있는지 통계와 목록으로 확인할 수 있어요.</p>
+          </div>
+
+          {/* 통계 카드 */}
+          {total > 0 && (
+            <div className={styles.statsCard}>
+              <div className={styles.donutWrap}>
+                <div className={styles.donut} style={{ background: donutBg }}>
+                  <div className={styles.donutHole}>
+                    <span className={styles.donutTotal}><AnimatedNumber value={total} /></span>
+                    <span className={styles.donutTotalLabel}>총 신고</span>
+                  </div>
+                </div>
+              </div>
+              <div className={styles.legend}>
+                {STATUS_ORDER.map(key => (
+                  <div key={key} className={styles.legendRow}>
+                    <span className={styles.legendDot} style={{ background: STATUS_COLOR_VAR[key] }} />
+                    <span className={styles.legendLabel}>{STATUS_LABEL[key]}</span>
+                    <span className={styles.legendCount}><AnimatedNumber value={counts[key]} /></span>
+                  </div>
+                ))}
+              </div>
+              <div className={styles.insights}>
+                {topReasonEntry && (
+                  <div className={styles.reasonHighlight}>
+                    <span className={styles.reasonHighlightIcon}>💡</span>
+                    <div>
+                      <div className={styles.reasonHighlightLabel}>가장 많이 접수한 사유</div>
+                      <div className={styles.reasonHighlightValue}>
+                        {REPORT_REASON_LABEL[topReasonEntry[0]] ?? topReasonEntry[0]}
+                        <span className={styles.reasonHighlightCount}>{topReasonEntry[1]}건</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className={styles.reasonHighlight}>
+                  <span className={styles.reasonHighlightIcon}>📊</span>
+                  <div style={{ flex: 1 }}>
+                    <div className={styles.reasonHighlightLabel}>신고 유형 비율</div>
+                    <div className={styles.reasonHighlightValue}>
+                      상품 {productPct}%
+                      <span className={styles.reasonHighlightCount}>· 사용자 {memberPct}%</span>
+                    </div>
+                    <div className={styles.typeRatioBar}>
+                      <div className={styles.typeRatioProduct} style={{ width: `${productPct}%` }} />
+                      <div className={styles.typeRatioMember} style={{ width: `${memberPct}%` }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 탭 필터 */}
           <div className={styles.tabs}>
             {TABS.map(tab => (
@@ -311,7 +374,7 @@ export default function MyReportsPage() {
                         <button
                           type="button"
                           className={styles.cancelBtn}
-                          onClick={() => cancelReport(report.reportId)}
+                          onClick={() => setCancelTargetId(report.reportId)}
                           disabled={cancellingId === report.reportId}
                         >
                           {cancellingId === report.reportId ? '취소 중...' : '신고 취소'}
@@ -328,57 +391,6 @@ export default function MyReportsPage() {
               <p>해당 상태의 신고 내역이 없어요.</p>
             </div>
           )}
-
-          {/* 통계 카드 */}
-          {total > 0 && (
-            <div className={styles.statsCard}>
-              <div className={styles.donutWrap}>
-                <div className={styles.donut} style={{ background: donutBg }}>
-                  <div className={styles.donutHole}>
-                    <span className={styles.donutTotal}><AnimatedNumber value={total} /></span>
-                    <span className={styles.donutTotalLabel}>총 신고</span>
-                  </div>
-                </div>
-              </div>
-              <div className={styles.legend}>
-                {STATUS_ORDER.map(key => (
-                  <div key={key} className={styles.legendRow}>
-                    <span className={styles.legendDot} style={{ background: STATUS_COLOR_VAR[key] }} />
-                    <span className={styles.legendLabel}>{STATUS_LABEL[key]}</span>
-                    <span className={styles.legendCount}><AnimatedNumber value={counts[key]} /></span>
-                  </div>
-                ))}
-              </div>
-              <div className={styles.insights}>
-                {topReasonEntry && (
-                  <div className={styles.reasonHighlight}>
-                    <span className={styles.reasonHighlightIcon}>💡</span>
-                    <div>
-                      <div className={styles.reasonHighlightLabel}>가장 많이 접수한 사유</div>
-                      <div className={styles.reasonHighlightValue}>
-                        {REPORT_REASON_LABEL[topReasonEntry[0]] ?? topReasonEntry[0]}
-                        <span className={styles.reasonHighlightCount}>{topReasonEntry[1]}건</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div className={styles.reasonHighlight}>
-                  <span className={styles.reasonHighlightIcon}>📊</span>
-                  <div style={{ flex: 1 }}>
-                    <div className={styles.reasonHighlightLabel}>신고 유형 비율</div>
-                    <div className={styles.reasonHighlightValue}>
-                      상품 {productPct}%
-                      <span className={styles.reasonHighlightCount}>· 사용자 {memberPct}%</span>
-                    </div>
-                    <div className={styles.typeRatioBar}>
-                      <div className={styles.typeRatioProduct} style={{ width: `${productPct}%` }} />
-                      <div className={styles.typeRatioMember} style={{ width: `${memberPct}%` }} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </>
       )}
 
@@ -392,6 +404,17 @@ export default function MyReportsPage() {
           />
         )
       })()}
+
+      {cancelTargetId != null && (
+        <ConfirmModal
+          message="이 신고를 취소할까요? 취소 후에는 되돌릴 수 없어요."
+          confirmText="취소하기"
+          cancelText="닫기"
+          danger
+          onConfirm={() => cancelReport(cancelTargetId)}
+          onCancel={() => setCancelTargetId(null)}
+        />
+      )}
 
       <div className={`toast${toastOn ? ' show' : ''}`}>{toastText}</div>
     </main>

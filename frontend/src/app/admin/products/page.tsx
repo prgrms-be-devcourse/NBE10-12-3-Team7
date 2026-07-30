@@ -120,22 +120,39 @@ export default function AdminProductsPage() {
           </div>
           <div className={styles.field}>
             <label>거래 상태</label>
-            <select value={tradeFilter} onChange={e => setTradeFilter(e.target.value as 'ALL' | TradeStatus)}>
-              <option value="ALL">전체</option>
-              <option value="ON_SALE">판매중</option>
-              <option value="RESERVED">예약중</option>
-              <option value="COMPLETED">거래완료</option>
-            </select>
+            <div className={styles.statusToggle}>
+              {(['ALL', 'ON_SALE', 'RESERVED', 'COMPLETED'] as const).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`${styles.statusToggleBtn}${tradeFilter === s ? ' ' + styles.statusToggleOn : ''}`}
+                  onClick={() => setTradeFilter(s)}
+                >
+                  {s === 'ALL' ? '전체' : TRADE_STATUS_LABEL[s]}
+                </button>
+              ))}
+            </div>
           </div>
           <div className={styles.field}>
             <label>숨김 여부</label>
-            <select value={hiddenFilter} onChange={e => setHiddenFilter(e.target.value as 'ALL' | 'VISIBLE' | 'HIDDEN')}>
-              <option value="ALL">전체</option>
-              <option value="VISIBLE">노출</option>
-              <option value="HIDDEN">숨김</option>
-            </select>
+            <div className={styles.statusToggle}>
+              {([
+                ['ALL', '전체'],
+                ['VISIBLE', '노출'],
+                ['HIDDEN', '숨김'],
+              ] as const).map(([s, label]) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`${styles.statusToggleBtn}${hiddenFilter === s ? ' ' + styles.statusToggleOn : ''}`}
+                  onClick={() => setHiddenFilter(s)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-          <button type="submit" className="btn">검색</button>
+          <button type="submit" className={`btn ${styles.filterBtn}`}>검색</button>
         </form>
 
         <div className={styles.tablewrap}>

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { apiFetch } from '@/lib/apiClient'
+import ConfirmModal from '@/components/ConfirmModal'
 import styles from './page.module.css'
 
 type EscrowStatus = 'IN_ESCROW' | 'DONE' | 'CANCELED'
@@ -55,6 +56,8 @@ export default function EscrowStatusPage() {
   const [product, setProduct] = useState<Product | null>(null)
   const [myMemberId, setMyMemberId] = useState<number | null>(null)
   const [processing, setProcessing] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [showConfirmPurchase, setShowConfirmPurchase] = useState(false)
 
   const [toastText, setToastText] = useState('')
   const [toastOn, setToastOn] = useState(false)
@@ -94,7 +97,7 @@ export default function EscrowStatusPage() {
 
   async function confirmPurchase() {
     if (!escrow) return
-    if (!window.confirm('물건을 확인하셨나요? 구매확정 후에는 되돌릴 수 없어요.')) return
+    setShowConfirmPurchase(false)
     setProcessing(true)
     try {
       const res = await apiFetch(`/api/escrows/${escrow.escrowId}/confirm`, { method: 'POST' })
@@ -112,7 +115,7 @@ export default function EscrowStatusPage() {
 
   async function cancelPurchase() {
     if (!escrow) return
-    if (!window.confirm('거래를 취소할까요? 대금이 환불(가정)돼요.')) return
+    setShowCancelConfirm(false)
     setProcessing(true)
     try {
       const res = await apiFetch(`/api/escrows/${escrow.escrowId}/cancel`, { method: 'POST' })
@@ -174,10 +177,10 @@ export default function EscrowStatusPage() {
 
         {escrow.status === 'IN_ESCROW' && isBuyer && (
           <div className={styles.actions}>
-            <button type="button" className={styles.btnCancel} onClick={cancelPurchase} disabled={processing}>
+            <button type="button" className={styles.btnCancel} onClick={() => setShowCancelConfirm(true)} disabled={processing}>
               거래 취소
             </button>
-            <button type="button" className={styles.btnConfirm} onClick={confirmPurchase} disabled={processing}>
+            <button type="button" className={styles.btnConfirm} onClick={() => setShowConfirmPurchase(true)} disabled={processing}>
               {processing ? '처리 중...' : '구매확정'}
             </button>
           </div>
@@ -188,6 +191,28 @@ export default function EscrowStatusPage() {
 
         <Link href={`/products/${escrow.productId}`} className={styles.backLink}>상품 페이지로 돌아가기</Link>
       </div>
+
+      {showCancelConfirm && (
+        <ConfirmModal
+          message="거래를 취소할까요? 대금이 환불(가정)돼요."
+          confirmText="취소하기"
+          cancelText="닫기"
+          danger
+          onConfirm={cancelPurchase}
+          onCancel={() => setShowCancelConfirm(false)}
+        />
+      )}
+
+      {showConfirmPurchase && (
+        <ConfirmModal
+          message={'물건을 확인하셨나요?\n구매확정 후에는 되돌릴 수 없어요.'}
+          confirmText="확인"
+          cancelText="취소"
+          confirmColor="var(--blue)"
+          onConfirm={confirmPurchase}
+          onCancel={() => setShowConfirmPurchase(false)}
+        />
+      )}
 
       <div className={`toast${toastOn ? ' show' : ''}`}>{toastText}</div>
     </main>
