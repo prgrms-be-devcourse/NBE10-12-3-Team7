@@ -50,10 +50,17 @@ public class ChatSubscribeInterceptor implements ChannelInterceptor {
         return message;
     }
 
+    /**
+     * 목적지에서 방 id를 추출한다. prefix 뒤 <b>첫 경로 세그먼트</b>만 파싱하므로
+     * 방 토픽({@code .../{roomId}})과 읽음 영수증 서브토픽({@code .../{roomId}/read})을 함께 커버한다
+     * (둘 다 같은 방 참여자만 구독 가능). 세그먼트가 숫자가 아니면 null(구독 거부).
+     */
     private Long parseRoomId(String destination) {
         String raw = destination.substring(CHAT_ROOM_TOPIC_PREFIX.length());
+        int slash = raw.indexOf('/');
+        String roomSegment = slash >= 0 ? raw.substring(0, slash) : raw;
         try {
-            return Long.valueOf(raw);
+            return Long.valueOf(roomSegment);
         } catch (NumberFormatException e) {
             return null;
         }

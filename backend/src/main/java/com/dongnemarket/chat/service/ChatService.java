@@ -98,17 +98,23 @@ public class ChatService {
      * 방의 메시지를 모두 읽음 처리한다 — 내 읽음 지점을 방의 최신 메시지 id까지 전진시킨다(참여자만 가능).
      * 메시지가 없는 방은 전진할 지점이 없어 아무것도 하지 않는다(안읽음은 어차피 0).
      * 읽음 지점 전진은 더티체킹으로 커밋된다.
+     * <p>실제로 읽음 지점이 <b>전진했을 때만</b> 그 지점(최신 메시지 id)을 반환하고, 이미 그 이후를 읽은
+     * 상태(재-read)이거나 빈 방이면 {@code null}을 반환한다. 컨트롤러는 이 값이 있을 때만 읽음 영수증을
+     * push해, 방을 열 때마다 무의미한 영수증이 쏟아지는 것을 막는다(단조 전진 가드는 엔티티가 이미 보장).
      */
     @Transactional
-    public void markRoomAsRead(Long memberId, Long roomId) {
+    public Long markRoomAsRead(Long memberId, Long roomId) {
         ChatRoom room = chatRoomRepository.findById(roomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND));
         validateParticipant(room, memberId);
 
+        Long before = room.lastReadMessageIdOf(memberId);
         Long latestMessageId = chatMessageRepository.findMaxIdByRoom(roomId);
-        if (latestMessageId != null) {
+        if (latestMessageId != null && (before == null || latestMessageId > before)) {
             room.markRead(memberId, latestMessageId);
+            return latestMessageId;
         }
+        return null;
     }
 
     /**

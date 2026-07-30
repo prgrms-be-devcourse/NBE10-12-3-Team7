@@ -52,7 +52,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * CONNECT 인증 → SUBSCRIBE 인가 → REST 전송 시 broadcast(B안)를 end-to-end 검증한다.
  * <ul>
  *   <li>참여자가 방 토픽을 구독하면 상대의 REST 전송이 push로 수신된다(크라운 주얼).</li>
- *   <li>비참여자의 방 토픽 구독은 거부된다(도청 차단).</li>
+ *   <li>참여자가 읽으면 읽음 영수증이 방 서브토픽(.../read)으로 push된다.</li>
+ *   <li>비참여자의 방 토픽·읽음 영수증 서브토픽 구독은 거부된다(도청 차단).</li>
  *   <li>토큰 없는 CONNECT는 거부된다.</li>
  * </ul>
  */
@@ -163,6 +164,41 @@ class ChatWebSocketTest {
     }
 
     @Test
+    @DisplayName("상대가 읽으면 읽음 영수증이 방 서브토픽으로 push된다")
+    void participantReceivesReadReceipt() throws Exception {
+        // 읽을 대상(메시지)을 만든다. seller가 보낸 메시지를 buyer가 읽는 시나리오.
+        sendMessageViaRest(sellerToken, roomId, "읽음 영수증 테스트");
+
+        BlockingQueue<Map<String, Object>> received = new LinkedBlockingQueue<>();
+        StompSession session = connect(sellerToken, new CountDownLatch(1));
+        session.subscribe("/topic/chat-rooms/" + roomId + "/read", frameHandler(received));
+        Thread.sleep(500);
+
+        // buyer가 읽으면 → 발신자(seller)에게 읽음 영수증 push.
+        readRoomViaRest(buyerToken, roomId);
+
+        Map<String, Object> payload = received.poll(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        assertThat(payload).isNotNull();
+        assertThat(((Number) payload.get("roomId")).longValue()).isEqualTo(roomId);
+        assertThat(((Number) payload.get("readerId")).longValue()).isEqualTo(buyer.getId());
+        assertThat(payload.get("lastReadMessageId")).isNotNull();
+    }
+
+    @Test
+    @DisplayName("비참여자의 읽음 영수증 서브토픽 구독은 거부된다(도청 차단)")
+    void outsiderReadReceiptSubscriptionIsRejected() throws Exception {
+        BlockingQueue<Map<String, Object>> received = new LinkedBlockingQueue<>();
+        CountDownLatch errorLatch = new CountDownLatch(1);
+        StompSession session = connect(outsiderToken, errorLatch);
+
+        // 서브토픽(.../read)도 방 참여자만 구독 가능해야 한다(파싱이 첫 세그먼트만 보므로 인가가 이어짐).
+        session.subscribe("/topic/chat-rooms/" + roomId + "/read", frameHandler(received));
+
+        assertThat(errorLatch.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+        assertThat(received).isEmpty();
+    }
+
+    @Test
     @DisplayName("토큰 없는 CONNECT는 거부된다")
     void connectWithoutTokenIsRejected() {
         assertThatThrownBy(() -> connect(null, new CountDownLatch(1)))
@@ -217,6 +253,15 @@ class ChatWebSocketTest {
         HttpEntity<String> request = new HttpEntity<>("{\"content\":\"" + content + "\"}", headers);
         restTemplate.postForEntity(
                 "http://localhost:" + port + "/api/chat-rooms/" + roomId + "/messages",
+                request, String.class);
+    }
+
+    private void readRoomViaRest(String token, Long roomId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/chat-rooms/" + roomId + "/read",
                 request, String.class);
     }
 
