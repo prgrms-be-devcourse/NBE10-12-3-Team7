@@ -80,8 +80,17 @@ Java → Kotlin 전환을 도메인 단위로 진행한다. 전환된 파일은 
   없으면 Java 호출부가 깨진다(`Foo.Companion.bar()` / 인자 적은 호출 불가).
 - **공개 API 의 nullability 를 임의로 조이지 않는다.** non-null `Long` 은 primitive `long` 이 되어
   아직 Java 인 호출부에서 **자동 언박싱 NPE** 를 낸다. 원본 시그니처를 그대로 옮기고, 전환 완료 후 별도 패스에서 조인다.
-- `record` → `data class` 는 **접근자 이름이 바뀐다**(`productId()` → `getProductId()`).
+- **Java `record` 는 `@JvmRecord data class` 로 옮긴다.** 그냥 `data class` 로 바꾸면 **접근자 이름이
+  바뀌어**(`productId()` → `getProductId()`) 아직 Java 인 호출부가 전부 깨진다. `@JvmRecord` 를 붙이면
+  JVM 상에서도 진짜 record 라 `productId()` 가 그대로 유지된다(호출부를 기계적으로 고치지 않아도 된다).
   깨진 호출부는 grep 말고 `./gradlew compileJava` 로 찾는다.
+- **`equals`/`hashCode` 가 없던 일반 DTO 는 `data class` 로 바꾸지 않는다.** 값 기반 동등성·`copy`·
+  `componentN` 이 새로 생겨 **기존에 없던 동작이 추가**된다. 일반 `class` 로 옮긴다.
+- **boolean getter 이름은 `@get:JvmName` 으로 유지한다.** Kotlin 은 `val autoLogin` 을 `getAutoLogin()`
+  으로 만들지만 Java 호출부는 `isAutoLogin()` 을 쓴다. 프로퍼티 이름을 `isAutoLogin` 으로 바꾸는 우회는
+  **쓰지 않는다** — JSON 필드명까지 `isAutoLogin` 으로 바뀐다.
+- **직렬화되는 프로퍼티에 `@get:JvmName` 을 쓰면 `@get:JsonProperty` 도 함께 붙인다.** getter 이름을
+  바꾸면 jackson-module-kotlin 이 정하는 JSON 필드명이 원본과 달라진다(실제로 응답 필드가 사라져 테스트가 깨졌다).
 
 ### 절차
 
