@@ -54,6 +54,27 @@
 
 .formCol { display: flex; flex-direction: column; }
 
+/* 소셜 간편 가입 */
+.oauthDivider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 4px 0 22px;
+  color: var(--text-muted); font-size: 13.5px; white-space: nowrap;
+}
+.oauthDivider::before, .oauthDivider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.oauthRow { display: flex; justify-content: center; gap: 16px; margin-bottom: 26px; }
+.oauthCircleBtn {
+  width: 56px; height: 56px;
+  display: grid; place-items: center;
+  border: none; border-radius: 50%;
+  cursor: pointer;
+  transition: filter .15s, transform .1s;
+}
+.oauthCircleBtn:hover:not(:disabled) { filter: brightness(.96); }
+.oauthCircleBtn:active:not(:disabled) { transform: translateY(1px); }
+.oauthCircleBtn:disabled { opacity: .55; cursor: not-allowed; }
+.kakaoCircle { background: #FEE500; }
+.googleCircle { background: #FFFFFF; border: 1px solid var(--border); }
+
 .field { margin-bottom: 18px; }
 /* 직계 자식(> )으로 한정: 이 필드 자신의 라벨/텍스트 인풋에만 적용되고, AgreementSection처럼 .field
    안에 중첩되는 자식 컴포넌트의 label/checkbox까지 descendant selector로 새어 들어가지 않게 한다.
