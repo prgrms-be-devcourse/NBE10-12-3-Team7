@@ -1,5 +1,22 @@
 plugins {
+	// Java → Kotlin 점진 전환 중. 두 언어가 공존하므로 java 플러그인을 계속 유지한다
+	// (src/main/java 가 비고 삭제되는 시점까지).
 	id 'java'
+	// Kotlin 버전은 Spring Boot BOM이 관리하는 kotlin.version(3.5.15 → 1.9.25)을 덮어쓴다.
+	// Spring Boot Gradle 플러그인이 "적용된 Kotlin 플러그인 버전"으로 kotlin.version 을 다시
+	// 정렬해주므로 stdlib/reflect 버전이 어긋나지 않는다. K2 컴파일러(2.x 기본)를 쓰기 위해 2.x 선택.
+	id 'org.jetbrains.kotlin.jvm' version '2.2.20'
+	// allopen(spring preset): @Component/@Configuration/@Transactional 계열 클래스를 open 으로.
+	// Kotlin class 는 기본 final 이라 이게 없으면 CGLIB 프록시를 만들 수 없고,
+	// @Transactional 이 "컴파일은 되지만 런타임에 조용히 안 걸리는" 상태가 된다.
+	id 'org.jetbrains.kotlin.plugin.spring' version '2.2.20'
+	// noarg: @Entity/@MappedSuperclass/@Embeddable 에 파라미터 없는 생성자를 합성.
+	// JPA가 리플렉션으로 엔티티를 만들 때 필요하다(Java 쪽 protected 기본 생성자의 대체).
+	id 'org.jetbrains.kotlin.plugin.jpa' version '2.2.20'
+	// allopen 을 JPA 어노테이션까지 확장(아래 allOpen 블록). spring preset 만으로는 엔티티가 final 이다.
+	id 'org.jetbrains.kotlin.plugin.allopen' version '2.2.20'
+	// Kotlin 포매터. 팀원 5명이 병렬로 전환하므로 스타일 편차를 도구로 흡수한다.
+	id 'org.jlleitschuh.gradle.ktlint' version '12.1.2'
 	id 'org.springframework.boot' version '3.5.15'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
@@ -11,6 +28,36 @@ java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(21)
 	}
+}
+
+// Kotlin 컴파일 설정. jvmTarget 은 위 java toolchain(21)을 그대로 물려받으므로 명시하지 않는다
+// (따로 적어두면 toolchain 을 올릴 때 한쪽만 남아 어긋난다).
+kotlin {
+	compilerOptions {
+		// Java 코드의 @Nullable/@NonNull(JSR-305) 을 Kotlin 타입 시스템에 엄격 반영한다.
+		// 없으면 Java 반환값이 전부 "플랫폼 타입"이 되어 null 검사가 헐거워지고,
+		// 전환 과정에서 불필요한 !! 가 코드에 박힌다.
+		freeCompilerArgs.add('-Xjsr305=strict')
+	}
+}
+
+// JPA 엔티티를 open 으로 만든다. Hibernate 의 지연로딩(@ManyToOne(fetch = LAZY))은
+// 엔티티를 상속한 프록시를 만들어 쓰는데, Kotlin class 는 기본 final 이라 상속이 불가능하다.
+// kotlin-spring 의 preset 은 @Component 계열만 다루므로 JPA 어노테이션을 직접 지정해야 한다.
+allOpen {
+	annotation('jakarta.persistence.Entity')
+	annotation('jakarta.persistence.MappedSuperclass')
+	annotation('jakarta.persistence.Embeddable')
+}
+
+// 포매팅. 마이그레이션 기간에는 빌드를 막지 않는다(ignoreFailures) — 전환 자체가 이미 큰 변경이라
+// 포매팅 실패로 PR이 멈추면 진도가 죽는다. 자동 교정은 `./gradlew ktlintFormat`.
+// 전환 완료 후 ignoreFailures 를 false 로 올려 게이트로 승격한다.
+ktlint {
+	// 플러그인 12.1.2가 기본으로 끌어오는 ktlint 는 Kotlin 2.2 의 컴파일러 API와 맞지 않아
+	// (KtTokens.HEADER_KEYWORD 제거) 실행 중 터진다. 도구 버전을 명시해 정렬한다.
+	version = '1.5.0'
+	ignoreFailures = true
 }
 
 repositories {
@@ -33,6 +80,14 @@ dependencyManagement {
 }
 
 dependencies {
+	// ── Kotlin ──
+	// DTO를 data class 로 옮기면 Jackson 이 주 생성자의 파라미터명을 못 읽어 역직렬화가 깨진다.
+	// 이 모듈이 Kotlin 주 생성자·기본값·nullability 를 Jackson 에 알려준다. 버전은 Boot BOM 관리.
+	implementation 'com.fasterxml.jackson.module:jackson-module-kotlin'
+	// Spring 이 생성자 파라미터명·기본값을 리플렉션으로 읽는 데 필요
+	// (생성자 주입, @ConfigurationProperties, @RequestParam 이름 추론). 버전은 Kotlin 플러그인이 정렬.
+	implementation 'org.jetbrains.kotlin:kotlin-reflect'
+
 	// Spring Boot
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
