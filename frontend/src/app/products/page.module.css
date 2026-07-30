@@ -32,9 +32,9 @@
 .band {
   margin-top: 24px;
   background: linear-gradient(120deg,
-    color-mix(in srgb, var(--primary) 18%, var(--surface)),
-    color-mix(in srgb, var(--warm) 58%, var(--surface)),
-    color-mix(in srgb, var(--primary) 18%, var(--surface)));
+    color-mix(in srgb, var(--primary) 34%, var(--surface)),
+    color-mix(in srgb, var(--warm) 46%, var(--surface)),
+    color-mix(in srgb, var(--primary) 34%, var(--surface)));
   background-size: 300% 300%;
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) + 4px);
@@ -44,7 +44,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 20px 36px;
-  animation: mo-rise .65s cubic-bezier(.2,.7,.3,1) .1s backwards, mo-wave 5s ease-in-out infinite;
+  animation: mo-rise .65s cubic-bezier(.2,.7,.3,1) .1s backwards, mo-wave 10s ease-in-out infinite;
 }
 .bandLead { flex: 1 1 240px; min-width: 240px; }
 .bandTag {
@@ -209,15 +209,67 @@
   animation-delay: .26s;
 }
 .feedHead h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.03em; }
-.sortSelect {
-  appearance: none;
-  padding: 0 18px 0 0;
-  border: none; background: transparent;
-  color: var(--text-muted); font-size: 13.5px; font-weight: 600; font-family: inherit;
+
+.sortWrap { position: relative; }
+.sortBtn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background-color: var(--surface);
+  color: var(--text); font-size: 13.5px; font-weight: 700; font-family: inherit;
   cursor: pointer; outline: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239a8590' stroke-width='2.4'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right center; background-size: 13px;
+  box-shadow: var(--shadow);
+  transition: border-color .15s, box-shadow .15s, color .15s;
 }
+.sortBtn:hover { border-color: var(--primary-soft); color: var(--primary); }
+.sortBtn:focus-visible { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.sortBtn svg { flex-shrink: 0; transition: transform .2s ease; }
+.sortBtn[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+.sortList {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  min-width: 140px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-hover);
+  transform-origin: top right;
+  max-height: 0;
+  opacity: 0;
+  transform: scaleY(.85) translateY(-6px);
+  overflow: hidden;
+  pointer-events: none;
+  transition: max-height .28s cubic-bezier(.2,.8,.3,1), opacity .2s ease, transform .22s cubic-bezier(.2,.8,.3,1);
+}
+.sortListOpen {
+  max-height: 260px;
+  opacity: 1;
+  transform: scaleY(1) translateY(0);
+  pointer-events: auto;
+}
+.sortOption {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px; font-weight: 600; font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.sortOption:hover { background: var(--primary-soft); color: var(--primary); }
+.sortOptionOn { color: var(--primary); font-weight: 800; }
 
 /* 상품 그리드 */
 .grid {

@@ -8,6 +8,7 @@
 }
 
 .section {
+  position: relative;
   min-height: calc(100vh - 65px);
   scroll-snap-align: start;
   scroll-snap-stop: always;
@@ -18,6 +19,27 @@
   text-align: center;
   padding: 40px 24px;
 }
+
+/* 섹션 뒤에 깔리는 배경 이미지(섹션별 이미지는 인라인 style로 지정). 모서리를 radial-gradient 마스크로
+   흐리게 처리해 배경색과 자연스럽게 이어지도록 한다. */
+.heroBg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  -webkit-mask-image: radial-gradient(ellipse 65% 60% at 50% 50%, #000 40%, transparent 78%);
+          mask-image: radial-gradient(ellipse 65% 60% at 50% 50%, #000 40%, transparent 78%);
+  pointer-events: none;
+  transform: translateY(70px);
+  transition: opacity 1.1s cubic-bezier(.2,.7,.3,1), transform 1.1s cubic-bezier(.2,.7,.3,1);
+}
+.section.visible .heroBg {
+  opacity: var(--hero-opacity, .8);
+  transform: translateY(0);
+}
+.section > *:not(.heroBg) { position: relative; z-index: 1; }
 
 /* 줄 단위로 아래에서 위로 떠오르는 효과. 트리거는 조상 .section에 .visible이 붙는 시점(IntersectionObserver, page.tsx).
    lineClip이 줄 높이만큼 잘라내는 창 역할을 해서, 그 안의 lineWrap이 아래에서 위로 올라오며 나타나는 것처럼 보인다. */
