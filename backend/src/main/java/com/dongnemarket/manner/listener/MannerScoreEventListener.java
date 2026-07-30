@@ -62,6 +62,6 @@ public class MannerScoreEventListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handleProductCompleted(ProductCompletedEvent event) {
-        mannerScoreService.applyTradeCompleted(event.sellerId());
+        mannerScoreService.applyTradeCompleted(event.getSellerId());
     }
 }

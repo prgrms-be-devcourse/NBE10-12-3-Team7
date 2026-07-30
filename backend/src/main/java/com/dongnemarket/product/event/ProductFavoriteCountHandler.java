@@ -18,11 +18,11 @@ public class ProductFavoriteCountHandler {
 
 	@EventListener
 	public void on(FavoriteAddedEvent event) {
-		productRepository.incrementFavoriteCount(event.productId());
+		productRepository.incrementFavoriteCount(event.getProductId());
 	}
 
 	@EventListener
 	public void on(FavoriteRemovedEvent event) {
-		productRepository.decrementFavoriteCount(event.productId());
+		productRepository.decrementFavoriteCount(event.getProductId());
 	}
 }
