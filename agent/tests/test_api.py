@@ -25,5 +25,6 @@ def test_legal_ask_emergency_envelope():
     body = response.json()
     assert body["success"] is True
     assert body["data"]["inScope"] is False
+    assert body["data"]["emergency"] is True
     assert "112" in body["data"]["answer"]
     assert body["data"]["sources"] == []

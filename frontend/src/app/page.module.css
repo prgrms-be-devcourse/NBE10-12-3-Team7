@@ -147,6 +147,10 @@
 }
 .brand { color: var(--primary); }
 
+/* 라이트 모드에서만 검정으로 고정하고 싶은 섹션(3번째 섹션)에 적용 — 다크 모드는 기존 --text를 그대로 따른다. */
+.titleBlackLight { color: #000; }
+:global([data-theme="dark"]) .titleBlackLight { color: var(--text); }
+
 .desc {
   margin: 24px 0 0;
   max-width: 560px;

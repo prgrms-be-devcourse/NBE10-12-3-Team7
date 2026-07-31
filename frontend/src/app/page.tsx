@@ -20,6 +20,7 @@ interface Section {
   bgBrightnessDark?: number
   bgSaturate?: number
   splash?: boolean
+  titleCls?: string
 }
 
 const SECTIONS: Section[] = [
@@ -47,6 +48,8 @@ const SECTIONS: Section[] = [
     titleLines: ['관심 상품은 저장하고,', '채팅으로 편하게 거래해요'],
     descLines: ['실시간 채팅과 관심 알림까지 — 거래에 필요한 기능이 다 있어요.'],
     bg: '/marketon-section3.png',
+    bgDark: '/marketon-section3-dark.png',
+    titleCls: 'titleBlackLight',
   },
   {
     eyebrow: ['🚀 시작해볼까요?'],
@@ -152,7 +155,7 @@ export default function Home() {
           <span className={styles.eyebrow}>
             <Stagger lines={section.eyebrow} stagger={stagger} startIndex={eyebrowStart} />
           </span>
-          <h1 className={styles.title}>
+          <h1 className={`${styles.title}${section.titleCls ? ' ' + styles[section.titleCls] : ''}`}>
             <Stagger lines={section.titleLines} stagger={stagger} startIndex={titleStart} />
           </h1>
           <p className={styles.desc}>
