@@ -66,21 +66,33 @@ export default function AdminReportsPage() {
         <div className={styles.filter}>
           <div className={styles.field}>
             <label>처리 상태</label>
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'ALL' | ReportStatus)}>
-              <option value="ALL">전체</option>
-              <option value="RECEIVED">접수</option>
-              <option value="REVIEWING">처리중</option>
-              <option value="COMPLETED">처리완료</option>
-              <option value="REJECTED">반려</option>
-            </select>
+            <div className={styles.statusToggle}>
+              {(['ALL', 'RECEIVED', 'REVIEWING', 'COMPLETED', 'REJECTED'] as const).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`${styles.statusToggleBtn}${statusFilter === s ? ' ' + styles.statusToggleOn : ''}`}
+                  onClick={() => setStatusFilter(s)}
+                >
+                  {s === 'ALL' ? '전체' : REPORT_STATUS_LABEL[s]}
+                </button>
+              ))}
+            </div>
           </div>
           <div className={styles.field}>
             <label>신고 유형</label>
-            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as 'ALL' | ReportType)}>
-              <option value="ALL">전체</option>
-              <option value="PRODUCT">상품 신고</option>
-              <option value="MEMBER">사용자 신고</option>
-            </select>
+            <div className={styles.statusToggle}>
+              {(['ALL', 'PRODUCT', 'MEMBER'] as const).map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`${styles.statusToggleBtn}${typeFilter === t ? ' ' + styles.statusToggleOn : ''}`}
+                  onClick={() => setTypeFilter(t)}
+                >
+                  {t === 'ALL' ? '전체' : `${REPORT_TYPE_LABEL[t]} 신고`}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

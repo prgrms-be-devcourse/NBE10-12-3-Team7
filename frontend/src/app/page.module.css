@@ -178,15 +178,16 @@
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 35%, transparent);
+  box-shadow: var(--shadow-hover);
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity .5s ease, transform .5s ease, background .15s, box-shadow .15s;
+  transition: opacity .5s ease, transform .5s ease, background .3s, box-shadow .15s;
   transition-delay: 2.2s, 2.2s, 0s, 0s;
 }
+:global([data-theme="dark"]) .ctaBtn { border: 3px solid var(--bg); }
 .section.visible .ctaBtn { opacity: 1; transform: translateY(0); }
-.ctaBtn:hover { background: var(--primary-d); }
-.ctaBtn:active { transform: translateY(1px); }
+.ctaBtn:hover { transform: scale(1.05); background: linear-gradient(135deg, var(--primary) 0%, var(--primary) 40%, #f3e25c 100%); }
+.ctaBtn:active { transform: scale(0.97); }
 
 @keyframes bounce {
   0%, 100% { transform: translateY(0); }

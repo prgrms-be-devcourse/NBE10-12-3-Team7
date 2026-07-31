@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getAccessToken } from '@/lib/auth'
 import { REPORT_REASON_LABEL, type ReportReason } from '@/lib/reportReasons'
 import { REPORT_STATUS_LABEL, REPORT_TYPE_LABEL, type ReportStatus, type ReportType } from '@/lib/reportStatus'
+import ConfirmModal from '@/components/ConfirmModal'
 import styles from '../../admin.module.css'
 
 interface Report {
@@ -41,6 +42,8 @@ export default function AdminReportDetailPage() {
   const [targetSellerId, setTargetSellerId] = useState<number | null>(null)
   const [selectVal, setSelectVal] = useState<ReportStatus>('RECEIVED')
   const [saving, setSaving] = useState(false)
+  const [showHideConfirm, setShowHideConfirm] = useState(false)
+  const [showSuspendConfirm, setShowSuspendConfirm] = useState(false)
 
   const [toastText, setToastText] = useState('')
   const [toastOn, setToastOn] = useState(false)
@@ -117,7 +120,7 @@ export default function AdminReportDetailPage() {
 
   async function hideTargetProduct() {
     if (!report?.targetProductId) return
-    if (!window.confirm('대상 상품을 숨김 처리할까요?')) return
+    setShowHideConfirm(false)
     const token = getAccessToken()
     if (!token) return
     try {
@@ -134,7 +137,7 @@ export default function AdminReportDetailPage() {
   async function suspendTargetMember() {
     const memberId = report?.reportType === 'MEMBER' ? report.targetMemberId : targetSellerId
     if (!memberId) return
-    if (!window.confirm('대상 회원을 정지 처리할까요?')) return
+    setShowSuspendConfirm(false)
     const token = getAccessToken()
     if (!token) return
     try {
@@ -195,12 +198,18 @@ export default function AdminReportDetailPage() {
           <h3>처리</h3>
           <div className={styles.field}>
             <label>처리 상태</label>
-            <select value={selectVal} onChange={e => setSelectVal(e.target.value as ReportStatus)}>
-              <option value="RECEIVED">접수</option>
-              <option value="REVIEWING">처리중</option>
-              <option value="COMPLETED">처리완료</option>
-              <option value="REJECTED">반려</option>
-            </select>
+            <div className={styles.statusToggle}>
+              {(['RECEIVED', 'REVIEWING', 'COMPLETED', 'REJECTED'] as const).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`${styles.statusToggleBtn}${selectVal === s ? ' ' + styles.statusToggleOn : ''}`}
+                  onClick={() => setSelectVal(s)}
+                >
+                  {REPORT_STATUS_LABEL[s]}
+                </button>
+              ))}
+            </div>
           </div>
           <div className={styles.btnRow} style={{ marginBottom: 18 }}>
             <button type="button" className="btn" onClick={applyStatus} disabled={saving}>
@@ -210,12 +219,34 @@ export default function AdminReportDetailPage() {
           <h3>연계 조치</h3>
           <div className={styles.btnRow}>
             {report.reportType === 'PRODUCT' && (
-              <button type="button" className={styles.btnWarn} onClick={hideTargetProduct}>대상 상품 숨김 처리</button>
+              <button type="button" className={styles.btnWarn} onClick={() => setShowHideConfirm(true)}>대상 상품 숨김 처리</button>
             )}
-            <button type="button" className="btn danger" onClick={suspendTargetMember}>대상 회원 정지 처리</button>
+            <button type="button" className="btn danger" onClick={() => setShowSuspendConfirm(true)}>대상 회원 정지 처리</button>
           </div>
         </div>
       </div>
+      {showHideConfirm && (
+        <ConfirmModal
+          message="대상 상품을 숨김 처리할까요?"
+          confirmText="숨김 처리"
+          cancelText="취소"
+          confirmColor="var(--amber)"
+          onConfirm={hideTargetProduct}
+          onCancel={() => setShowHideConfirm(false)}
+        />
+      )}
+
+      {showSuspendConfirm && (
+        <ConfirmModal
+          message="대상 회원을 정지 처리할까요?"
+          confirmText="정지 처리"
+          cancelText="취소"
+          danger
+          onConfirm={suspendTargetMember}
+          onCancel={() => setShowSuspendConfirm(false)}
+        />
+      )}
+
       <div className={`toast${toastOn ? ' show' : ''}`}>{toastText}</div>
     </>
   )
