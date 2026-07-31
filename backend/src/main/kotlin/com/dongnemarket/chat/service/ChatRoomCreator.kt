@@ -29,7 +29,10 @@ class ChatRoomCreator(
      * 동시 최초 생성 경쟁 시 진 쪽은 UNIQUE 위반으로 `DataIntegrityViolationException`을 던진다(호출자가 복구).
      */
     @Transactional
-    fun createIfAbsent(memberId: Long, productId: Long) {
+    fun createIfAbsent(
+        memberId: Long,
+        productId: Long,
+    ) {
         if (chatRoomRepository.findByProduct_IdAndBuyer_Id(productId, memberId).isPresent) {
             return
         }

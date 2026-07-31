@@ -65,7 +65,8 @@ class ChatController(
         val response = chatService.sendMessage(memberId, roomId, request.content)
         // sendMessage는 @Transactional이라 여기(반환 후)는 이미 커밋된 시점 → 방 구독자에게 push. B안(REST 유지 + broadcast).
         messagingTemplate.convertAndSend(CHAT_ROOM_TOPIC_PREFIX + roomId, response)
-        return ResponseEntity.status(HttpStatus.CREATED)
+        return ResponseEntity
+            .status(HttpStatus.CREATED)
             .body(ApiResponse.success(HttpStatus.CREATED.value(), "메시지를 전송했습니다.", response))
     }
 
