@@ -674,6 +674,110 @@ final 필드 때문에 값이 조용히 비게 된다. 실제 값이 채워지�
 
 ---
 
+# 응답 DTO finality — 같은 검사에서 이어서 나온 차이
+
+위 「보호 생성자」건으로 검증 기준을 `javap -p` 전수 비교로 올린 직후, 같은 검사에서 응답 DTO 에도
+같은 종류의 차이가 남아 있는 것이 드러났다. 대상 6개:
+`AccessTokenResponse` · `LoginResponse` · `TokenResponse` · `SignupResponse` ·
+`EmailVerificationResponse` · `EmailVerificationConfirmResponse`.
+
+```
+원본  : public class AccessTokenResponse {   public java.lang.String getAccessToken();
+전환후: public final class AccessTokenResponse {   public final java.lang.String getAccessToken();
+```
+
+Kotlin 은 클래스와 프로퍼티 접근자가 기본 `final` 이고, Java 는 기본 non-final 이다.
+전환만 했는데 **표면이 조용히 좁아진** 것이다.
+
+## 사용처 유무와 무관하게 복원한 이유
+
+이 6개는 서버→클라이언트 **응답 전용**이라 상속하는 코드도, 역직렬화 경로도 없다.
+그럼에도 복원한 근거는 「보호 생성자」절과 같다.
+
+1. 이 PR 은 **기능 변경이 0 인 순수 언어 전환**이다. 클래스·getter 의 non-final 여부도 원본
+   JVM 계약의 일부다.
+2. "지금 상속하는 곳이 없다" 는 계약을 좁혀도 된다는 근거가 아니라, **아직 문제가 드러나지
+   않았다**는 뜻일 뿐이다.
+3. **기준의 반쪽화 방지.** 요청 DTO 만 맞추고 응답 DTO 를 남겨두면, 남은 2~7단계에서 "어느 쪽
+   기준을 따르나" 라는 질문이 매번 되살아난다.
+
+## `open class` + `open val` — 그 외에는 손대지 않았다
+
+```kotlin
+open class AccessTokenResponse private constructor(
+    open val accessToken: String?,
+) {
+    companion object {
+        @JvmStatic
+        fun of(accessToken: String?): AccessTokenResponse = AccessTokenResponse(accessToken)
+    }
+}
+```
+
+| 지킨 것 | 이유 |
+|---|---|
+| 일반 `class` 유지(`data class` 아님) | `equals`/`hashCode`/`toString`/`componentN`/`copy` 가 새로 생기면 원본에 없던 동작이다. 특히 `TokenResponse`·`LoginResponse` 는 **토큰 값을 들고 있어 `toString()` 이 로그로 값을 흘릴 위험**이 있다 |
+| 생성자 표면 불변 | private 생성자 4개는 여전히 public 이 아니고, public 생성자 2개는 그대로 1개씩이다 |
+| `@JvmStatic` 정적 팩토리 유지 | 없으면 Java 호출부가 `.Companion.of(...)` 가 된다 |
+| JSON 필드명·nullability 불변 | 계약 변경 금지 |
+
+> `open class` 인데 생성자가 `private` 이면 실제로는 상속할 수 없다. **원본 Java 도 정확히 같은
+> 상태였다**(`public class` + `private` 생성자). 표면만 원본과 같아지는 것이고, 그게 목적이다.
+
+### `var` 전환을 버린 이유
+
+`val` → `var` 로 바꾸면 backing field 의 `final` 이 떨어져 나가 원본과 더 가까워 보인다.
+그러나 **Kotlin 이 public setter(`setAccessToken(String)`)를 함께 만든다.** 원본에 없던 공개
+메서드가 생기는 것이라, private 필드 수식어 하나를 맞추려고 **공개 표면을 넓히는 교환**이 된다.
+표면 보존이 목적인 작업에서 방향이 정반대다. 그래서 쓰지 않았고, 회귀 테스트
+(`noPublicSettersAnywhere`)로 13개 DTO 전체에 setter 가 0건임을 고정했다.
+
+### private 필드는 손댈 것이 없었다
+
+요청 DTO 와 달리 **원본 응답 DTO 는 필드가 이미 `private final`** 이었다(`javap -p` 확인).
+이쪽은 필드 수식어 차이가 애초에 존재하지 않는다.
+
+### `EmailVerificationConfirmResponse.verified` 는 `final` 로 남는다 🔴
+
+`@get:JvmName("isVerified")` 와 `open` 은 함께 쓸 수 없다 — Kotlin 이 금지한다.
+
+```
+e: '@JvmName' annotation is not applicable to this declaration.
+```
+
+이름을 바꾼 getter 를 오버라이드 가능하게 두면 가상 디스패치가 깨지기 때문이다.
+`isVerified()` 이름(Java 호출부)과 `@get:JsonProperty("verified")` 로 고정한 JSON 필드명이
+오버라이드 가능성보다 우선한다. 요청 DTO 의 boolean getter 3개와 **같은 제약**이다.
+같은 클래스의 `email` 프로퍼티는 제약이 없어 `open` 으로 복원했다.
+
+## 최종 결과 — 남은 허용 차이 목록
+
+18개 전체 `javap -p` 재비교 기준. **클래스 선언 finality 불일치 0/18**,
+**이름+descriptor 기준 멤버 손실 0/18**, **public setter 0건**.
+
+완전 일치: `OAuthLoginRequest` · `EmailSender` · `EmailVerificationResponse` (3개)
+
+남은 차이는 전부 아래 셋 중 하나이며, **기존 멤버가 사라진 경우는 없다.**
+
+| 분류 | 항목 | 왜 남는가 |
+|---|---|---|
+| **① 언어 제약 — 복원 불가** | boolean getter 4개의 `final`<br>(`isAutoLogin` · `isTermsAgreed` · `isPersonalInfoCollectionAgreed` · `isVerified`) | Kotlin 이 `@JvmName` + `open` 병용을 금지한다. 이름 유지가 우선 |
+| **① 언어 제약 — 복원 불가** | `@JvmStatic` 정적 팩토리가 `public static final`<br>(원본 `public static`) | Kotlin 이 `@JvmStatic` 에 항상 `ACC_FINAL` 을 붙인다. static 메서드는 어차피 오버라이드 대상이 아니라 **의미상 차이가 없는 플래그 차이**다 |
+| **② Kotlin 필수 synthetic** | `DefaultConstructorMarker` 생성자 6개 · `copy$default` 3개 · enum `$VALUES`/`$values()`/`$ENTRIES` | `ACC_SYNTHETIC` 확인됨. **Java 소스에서 호출할 수 없다** |
+| **② Kotlin 구조 필수** | `Companion` 필드 + `static {}` (companion object 4개) · `getEntries()` (Kotlin 2.x enum) · `componentN()`/`copy()` (`@JvmRecord data class` 3개) | 언어 구조상 따라오는 것. 전부 additive |
+| **③ 의도적으로 유지한 차이** | **요청 DTO 6개의 private backing field 가 `private final`**(원본 `private`) | `var` 로 바꾸면 원본에 없던 **public setter** 가 생긴다. private 필드 수식어보다 공개 표면 보존이 우선이다. private 이라 어떤 호출부에도 보이지 않는다 |
+
+③은 이 한 항목뿐이고, 나머지는 전부 복원됐거나 언어가 강제하는 차이다.
+
+**테스트** — 호환성 테스트 5건 추가(37 → 42건), `test` 667건(662 + 5) · `integrationTest` 44건 통과.
+
+> ⚠️ 이 시점의 최신 `origin/develop`(`db7b8d7`)은 이 브랜치와 무관한 이유로 컴파일 실패
+> 상태였다(`favorite/dto/FavoriteProductSummary.kt` — Category Kotlin 전환 후의 도메인 간
+> nullability 회귀). 위 결과는 **feature 브랜치 단독 실행 결과**이며, develop 복구 후
+> 임시 병합 검증을 다시 수행해야 한다.
+
+---
+
 # 이후 단계 계획 — 5단계(A~E)에서 7단계로 재분할 *(예정 — 미착수)*
 
 > 아래 절 전체는 **확정된 구현 기록이 아니라 검토 예정 항목 목록**이다.
