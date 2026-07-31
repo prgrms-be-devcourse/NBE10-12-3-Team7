@@ -539,44 +539,271 @@ JVM 공개 멤버 손실 0건. 운영 service/controller 코드 변경 0건.
 
 ---
 
-# PR B — Persistence *(예정 — 미착수)*
+# 이후 단계 계획 — 5단계(A~E)에서 7단계로 재분할 *(예정 — 미착수)*
 
-> 아래 PR B~E 절은 **확정된 구현 기록이 아니라 검토 예정 항목 목록**이다.
-> 각 PR 을 실제로 수행한 뒤 위 PR A 와 같은 양식(11개 필드)으로 이 문서에 누적한다.
+> 아래 절 전체는 **확정된 구현 기록이 아니라 검토 예정 항목 목록**이다.
+> 각 단계를 실제로 수행한 뒤 위 PR A 와 같은 양식(11개 필드)으로 이 문서에 누적한다.
+> 여기 적힌 어떤 선언 형태·수치도 **아직 실측된 것이 아니다.**
 
-브랜치 `refactor/kotlin-auth-02-persistence` / entity 3 + repository interface 8 + 구현 10
+당초 계획은 A~E 5단계였다. 최신 `origin/develop` 기준으로 대상 파일을 실제로 집계한 결과
+Persistence(구 PR B, 21파일 1,082줄)와 Service(구 PR D, 7파일 831줄)가 한 PR 로 감당하기에 커서
+**7단계로 재분할**했다.
+
+| # | 브랜치 | 대상 | 상태 |
+|---|---|---|---|
+| 1 | `feature/auth_kotlin_model` | 기반 타입 18 | **완료(위 PR A 기록) — 머지 대기** |
+| 2 | `feature/auth_kotlin_persistence_entity` | entity 3 + JPA repository 4 | 예정 |
+| 3 | `feature/auth_kotlin_persistence_store` | 저장소 추상화 5 + Redis 5 + InMemory 4 | 예정 |
+| 4 | `feature/auth_kotlin_oauth` | client 6 + config 1 | 예정 |
+| 5 | `feature/auth_kotlin_support_service` | 지원 서비스 4 + mail 1 | 예정 |
+| 6 | `feature/auth_kotlin_core_service` | `OAuthSignupTransaction` · `AuthService` | 예정 |
+| 7 | `feature/auth_kotlin_controller` | controller 3 | 예정 |
+| — | `feature/auth_device_session_management` | 기기·세션 관리 **기능** | 전환 완료 후 별도 |
+
+**분기 규칙**: 각 단계는 **직전 PR 이 develop 에 병합된 뒤 최신 `origin/develop` 에서 새로 분기**한다.
+stacked branch 는 쓰지 않는다 — 앞 PR 이 리뷰에서 바뀌면 뒤에 쌓은 브랜치를 전부 다시 만들어야 하고,
+CI 가 없어(위 「환경」) **각 PR 을 develop 기준으로 로컬 검증하는 것이 유일한 게이트**이기 때문이다.
+
+**기능을 섞지 않는다**: 기기·세션 관리 기능은 1~7단계 어느 PR 에도 넣지 않는다. 전환 PR 의 가치는
+"언어 변환이며 기능 변경이 0" 이라는 점에 있고, 기능이 섞이면 회귀가 났을 때 **언어 전환 탓인지
+새 기능 탓인지 구분할 수 없어** 기존 테스트를 회귀 안전망으로 쓰는 전략 자체가 무너진다.
+
+---
+
+## 왜 Persistence 를 2·3단계로 나눴나 *(분할 사유)*
+
+구 PR B 는 entity 3 + repository 18 = 21파일이었다. 두 덩어리는 **깨지는 방식이 서로 다르다.**
+
+| | 2단계 (entity) | 3단계 (store) |
+|---|---|---|
+| 깨지는 지점 | JPA 매핑·프록시·`@JvmStatic` — **애플리케이션 기동 시점** | Redis 키·TTL·Lua — **런타임 동작** |
+| 잡아내는 수단 | `ddl-auto=validate` 기동, `@DataJpaTest`, `javap` | `integrationTest`(Testcontainers Redis) |
+| 외부 영향 | `member` 테스트 2개가 `EmailVerification` 참조 | 없음(auth 내부) |
+| 실패 시 증상 | 컴파일 에러 또는 기동 실패(**즉시 드러남**) | 프로파일별로 갈리는 조용한 오동작(**늦게 드러남**) |
+
+섞으면 `integrationTest` 가 깨졌을 때 원인이 JPA 쪽인지 Redis 쪽인지 좁히는 데 시간이 든다.
+경계는 **"기동 시점에 드러나는 것"과 "런타임에 드러나는 것"** 으로 잡았다.
+3단계는 **2단계가 develop 에 병합된 뒤에만** 시작한다(3단계의 `JpaRefreshTokenRepository` 대칭 짝이
+2단계 결과 위에서만 의미가 있다).
+
+## 왜 Service 를 5·6단계로 나눴나 *(분할 사유)*
+
+구 PR D 는 7파일 831줄이고, 그중 `AuthService` 한 파일이 317줄로 38% 를 차지한다.
+
+| | 5단계 (support) | 6단계 (core) |
+|---|---|---|
+| 대상 | `RefreshTokenService` `LoginAttemptService` `EmailVerificationService` `PasswordResetService` `SmtpEmailSender` | `OAuthSignupTransaction` `AuthService` |
+| 성격 | 저장소를 감싼 **얇은 정책 계층** — 트랜잭션 경계가 단순 | **트랜잭션 경계 자체가 설계** — `NOT_SUPPORTED` 전파, 별도 빈, 동시성 |
+| 외부 영향 | `MemberService.java` 가 `RefreshTokenService` 호출 | 없음(auth 내부) |
+| 리뷰 초점 | fail-open/fail-closed · 상수 · JVM 시그니처 | 전파 속성 · 동시 가입 · reconcile |
+
+`AuthService` 는 5단계 대상 4개를 **전부 주입받는다.** 지원 서비스의 JVM 시그니처를 먼저 확정해
+develop 에 넣어두면, 6단계는 "호출부를 Kotlin 으로 옮기는 일" 만 남아 리뷰 초점이 트랜잭션 경계
+하나로 좁혀진다. 6단계는 **5단계가 develop 에 병합된 뒤에만** 시작한다.
+
+---
+
+## 2단계 — Persistence Entity `feature/auth_kotlin_persistence_entity` *(예정)*
+
+대상(7): `entity/RefreshToken` `entity/EmailVerification` `entity/MemberSocialAccount`
+`repository/EmailVerificationRepository` `repository/MemberSocialAccountRepository`
+`repository/RefreshTokenJpaEntityRepository` `repository/JpaRefreshTokenRepository`
 
 검토 예정 항목:
-- Kotlin JPA entity 를 `data class` 로 만들면 안 되는 이유 (지연 로딩 프록시·JPA 동일성)
-- `equals`/`hashCode` 를 새로 정의하지 않은 이유 (현재 3개 entity 모두 미정의 = 참조 동등성)
-- JPA field access ↔ property access 차이
-- `@field:Column` 등 use-site target (누락 시 **JPA 가 매핑을 조용히 무시**)
-- nullable DB 컬럼 ↔ Kotlin 타입 (스키마와 1:1 일치, Flyway `validate` 와 어긋나지 않게)
-- Java `Optional` ↔ Kotlin nullable (**현재 27곳** — interface·구현을 같은 PR 에서 동시 전환)
-- `@Profile("test")` / `@Profile("!test")` 구현 **5쌍의 대칭** 유지
-- static factory (`RefreshToken.issue`, `MemberSocialAccount.of`) 의 Java 호환성
-- ⚠️ **`auth:refresh:{memberId}` Redis 키 형식·TTL 불변** 확인 방법
+- JPA 매핑 — `@field:Column` 등 **use-site target**(누락 시 어노테이션이 생성자 파라미터에 붙어
+  **JPA 가 매핑을 조용히 무시**한다) / field access ↔ property access 차이
+- `protected` 무인자 생성자 표면 — 현재 3개 entity 모두 `protected Xxx()` 를 명시 선언한다.
+  noarg 플러그인이 합성하는 생성자와 **`javap -p` 상 가시성이 같은지** 확인
+- **`data class` 미사용** — 지연 로딩 프록시·JPA 동일성과 어긋난다(`backend.md` 규칙)
+- **identity 기반 `equals`/`hashCode` 유지** — 3개 entity 모두 현재 미정의(= `Object` 참조 동등성).
+  `equals` 선언 클래스가 `Object` 인지 `javap` 로 확인
+- static factory 의 Java 호출 호환 — `RefreshToken.issue` `EmailVerification.verified`
+  `MemberSocialAccount.of`. **`@JvmStatic` 누락 시 `.Companion.` 이 필요해져** 아직 Java 인
+  `AuthService`·`EmailVerificationService`·`member` 테스트 2개가 깨진다
+- `Member`(아직 Java) entity 참조 → 아래 「표현 보정」절의 절차로 결정
+- test profile 의 JPA 구현 — `JpaRefreshTokenRepository`(`@Profile("test")`) 가
+  `findByMemberId` → `replace()` dirty checking → 없으면 `save()` 하는 upsert 동작을 유지하는지
+- nullable DB 컬럼 ↔ Kotlin 타입 (Flyway `validate` 와 어긋나지 않게)
+- **미검증 — 2단계에서 확인할 항목**: `backend.md` 에는 allOpen 이 프로퍼티도 open 으로 만들어
+  `private set` 이 컴파일 에러가 된다고 기록돼 있다(PR #17 작성자 경험). PR A 는 entity 를 다루지 않아
+  **직접 확인하지 못했다.** 실제 컴파일로 확인한 뒤 결과를 이 문서에 기록한다.
 
-> **PR A 교훈 적용(예정)**: entity 는 `Member`(아직 Java) 를 참조하므로 nullability 를 조이지 말 것.
->
-> **미검증 — PR B 에서 확인할 항목**: `backend/backend.md` 에는 allOpen 이 프로퍼티도 open 으로 만들어
-> `private set` 이 컴파일 에러가 된다고 기록되어 있다(PR #17 작성자가 겪은 내용). PR A 는 entity 를
-> 다루지 않아 **직접 확인하지 못했다.** PR B 에서 실제 컴파일로 확인한 뒤 결과를 이 문서에 기록한다.
+## 3단계 — Persistence Store `feature/auth_kotlin_persistence_store` *(예정)*
 
-# PR C — OAuth *(예정 — 미착수)*
+대상(14): 저장소 추상화 5 (`RefreshTokenRepository` `OAuthStateRepository` `LoginAttemptRepository`
+`EmailVerificationCodeRepository` `PasswordResetTokenRepository`) + Redis 구현 5 + InMemory 구현 4
 
-검토 예정 항목: WebClient 응답 body nullability / 외부 API 오류 매핑(`OAuthClientErrorMapper` 의 예외 타입·발생 시점 보존) /
-Google nonce ↔ 카카오 nonce 차이 / record·value object 호환성 / MockWebServer 기반 4xx·5xx·timeout 재현
+검토 예정 항목:
+- **Redis/InMemory 프로파일 대칭** — 4쌍이 `@Profile("test")`/`@Profile("!test")` 로 대칭이다.
+  **두 구현을 같은 커밋에서 함께 옮긴다** — 한쪽만 옮기면 `./gradlew test` 는 test 프로파일만 돌아
+  **Redis 쪽 회귀를 잡지 못한다**(`integrationTest` 에서야 드러난다)
+- **`Optional<T>` 반환 유지** — 호출부(5·6단계 대상)가 아직 Java 이고 `.orElseThrow` `.ifPresentOrElse`
+  `.map().orElseGet()` `.filter()` 를 직접 쓴다. nullable 로 바꾸면 뒤 단계 파일을 미리 수정해야 해
+  **PR 경계가 무너진다.** `Optional` → nullable 축소는 7단계 이후 별도 패스
+- Redis 키와 TTL 불변 — `auth:refresh:{memberId}` · `auth:oauth:state:{state}` ·
+  `auth:oauth:bcid:{hash}:states` · `auth:login:fail:{email}` · `auth:email:verify:{email}`
+- Lua 스크립트 — `ISSUE_SCRIPT`/`CONSUME_SCRIPT` 를 Kotlin raw string 으로 옮길 때
+  **`$` 이스케이프 필요 여부 확인**(현재 본문에 `$` 없음 → 안전해 보이나 검증 항목으로 남긴다)
+- **ARGV 순서와 인덱스** — `ARGV[1..10]` 과 `IDX_PROVIDER..IDX_ISSUED_AT` 6개 상수가 바이트 단위로 동일해야 한다
+- **`oidcNonce` null ↔ 빈 문자열 왕복** — 저장 시 `nullToEmpty`, 복원 시 `isEmpty() ? null`.
+  PR A 에서 카카오 로그인을 무너뜨린 바로 그 계약이다(위 「예외 항목」 참조). 절대 조이지 않는다
+- timeout·장애 동작 — `RedisCommandTimeoutTest` 가 고정하는 동작 유지
+- `LoginAttemptRepository.incrementFailure` 의 **최초 실패에만 TTL 설정**(윈도우 미연장) 의미 보존
 
-# PR D — Service *(예정 — 미착수)*
+## 4단계 — OAuth `feature/auth_kotlin_oauth` *(예정)*
 
-검토 예정 항목: Kotlin `@Transactional` 과 all-open / **`Propagation.NOT_SUPPORTED` 전파 유지**(`AuthService.oauthLogin`) /
-Java 에서 Kotlin 서비스 호출 시 nullability / 동시 가입 예외 처리(`DataIntegrityViolationException` → `reconcileAfterConflict`) /
-fail-open(로그아웃) ↔ fail-closed(로그인·재발급) 정책 보존 / 공개 메서드 JVM 시그니처 유지
-(특히 `RefreshTokenService` 는 `MemberService.java` 가 호출하는 **유일한 외부 진입점**)
+대상(7): `client/OAuthClient` `client/KakaoOAuthClient` `client/GoogleOAuthClient`
+`client/GoogleIdTokenValidator` `client/OAuthAuthorizationUrlFactory` `client/OAuthClientErrorMapper`
+`config/OAuthWebClientConfig`
 
-# PR E — Controller *(예정 — 미착수)*
+검토 예정 항목:
+- 인가 URL 쿼리 파라미터 **이름·순서** 및 scope(`account_email` / `openid email`) 완전 일치
+- 외부 API 오류 매핑 — `OAuthClientErrorMapper` 의 예외 타입·발생 시점 보존
+  (4xx→`OAUTH_AUTHORIZATION_FAILED`, 5xx·네트워크·timeout·`CodecException`·`DataBufferLimitException`→`OAUTH_PROVIDER_ERROR`)
+- `OAuthClientErrorMapper` 는 package-private `final class` + static 이다. Kotlin 으로 옮길 때
+  **`Supplier<T>` 파라미터 타입을 유지**한다 — Kotlin 함수 타입으로 바꾸면 아직 Java 인 호출부의
+  SAM 변환이 깨진다. `@JvmStatic` 필요 여부 확인
+- Google nonce ↔ 카카오 nonce 차이 / `MessageDigest.isEqual` **상수시간 비교 유지**
+- private nested `record` 3개(`KakaoTokenResponse` `KakaoUserResponse.KakaoAccount` `GoogleTokenResponse`)
+  의 Jackson 어노테이션(`@JsonNaming` `@JsonIgnoreProperties`) 보존
+- `Boolean` 박싱 필드(`isEmailValid` `isEmailVerified`) 는 **nullable 유지** —
+  `Boolean.TRUE.equals()` 의 3-state 의미가 사라지면 안 된다
+- WebClient 응답 body nullability / MockWebServer 기반 4xx·5xx·timeout·깨진 JSON 재현
 
-검토 예정 항목: Kotlin controller 파라미터 nullability / `@CookieValue(required = false)` /
-`@AuthenticationPrincipal Long` 바인딩 / **HttpOnly 쿠키 계약**(이름·Path·SameSite·Max-Age) /
-Jackson request binding / Bean Validation / 응답 JSON 계약
+## 5단계 — Support Service `feature/auth_kotlin_support_service` *(예정)*
+
+대상(5): `service/RefreshTokenService` `service/LoginAttemptService` `service/EmailVerificationService`
+`service/PasswordResetService` `mail/SmtpEmailSender`
+
+검토 예정 항목:
+- **fail-open / fail-closed 정책 보존**
+  - fail-closed: `RefreshTokenService.saveOrReplace` `validateAndGetMemberId` — **try/catch 를 두지
+    않는 것 자체가 정책**이다
+  - fail-open: `RefreshTokenService.deleteByMemberId` — `catch (DataAccessException)` 후 로그만(로그아웃 멱등)
+  - fail-open: `PasswordResetService.requestReset` — 미가입·탈퇴·소셜전용은 조용히 통과(계정 존재 노출 방지)
+  - 예외 **타입**(`DataAccessException` `MailException`)까지 그대로 옮긴다
+- **boxed `Long` JVM 호환** — `deleteByMemberId(Long)` 을 non-null `Long` 으로 조이면 JVM 에서
+  primitive `long` 이 되어 아직 Java 인 `MemberService` 호출부에서 **자동 언박싱 NPE** 위험이 생기고
+  `MemberServiceTest` 의 `anyLong()` 매처 계약도 흔들린다
+- TTL·시도 횟수·쿨다운 상수 — `MAX_ATTEMPTS=5` `LOCK_WINDOW=10분` `COOLDOWN_SECONDS=60`
+  `CODE_TTL_MINUTES=5` `TOKEN_TTL_MINUTES=30` 값·의미 동일
+- **`MemberService` 호출부 무수정** — 이 PR 의 diff 에 `member/` 파일이 한 줄도 없어야 한다(완료 조건)
+- 메일 예외 매핑 — `MailException` → `EMAIL_SEND_FAILED`
+- 메일 본문 문자열·제목("[마켓온] …") 과 재설정 링크 형식 불변
+
+## 6단계 — Core Service `feature/auth_kotlin_core_service` *(예정)*
+
+대상(2): `service/OAuthSignupTransaction` `service/AuthService`
+
+검토 예정 항목:
+- **`@Transactional` 과 `Propagation.NOT_SUPPORTED`** — 클래스 `@Transactional(readOnly = true)`,
+  `signup`·`login`·`reissue`·`logout` 은 `@Transactional`,
+  **`startAuthorization`·`oauthLogin` 은 `@Transactional(propagation = NOT_SUPPORTED)`**.
+  Kotlin 클래스는 기본 `final` 이라 allOpen 이 없으면 **`@Transactional` 이 런타임에 조용히 안 걸린다**
+  — 플러그인은 이미 있으나 실제 프록시 적용을 테스트로 확인한다
+- **별도 빈을 이용한 트랜잭션 경계** — `OAuthSignupTransaction` 을 별도 빈으로 유지한다.
+  같은 빈 안의 self-invocation 이면 프록시가 가로채지 못해 경계가 사라진다
+- **동시 소셜 가입** — `OAuthSignupTransactionConcurrencyTest`(@Tag integration) 가 고정하는 동작
+- **충돌 후 reconcile** — `signUp()` → `DataIntegrityViolationException`(트랜잭션 전체 롤백) →
+  별도 read-only 트랜잭션 `reconcileAfterConflict()` → empty 면 `OAUTH_EMAIL_CONFLICT`.
+  **DB 벤더 예외 메시지에 의존하지 않는다**
+- **`OAuthClient` 시그니처** — `AuthService` 가 `OAuthClient` 를 **파라미터로 받는다**(4단계에서 확정된 형태)
+- **공개 JVM 메서드** — `signup` `login` `startAuthorization` `oauthLogin` `reissue` `logout` 6개.
+  7단계까지 controller 가 Java 이므로 이름·시그니처가 하나라도 바뀌면 컴파일이 깨진다
+- **`JwtTokenProvider` 호출 계약** — 이미 Kotlin 이고 `createAccessToken(Long?, String)`
+  `createRefreshToken(Long?)` `getMemberId(String): Long`. **global 은 팀장 영역이라 수정 금지**
+
+## 7단계 — Controller `feature/auth_kotlin_controller` *(예정)*
+
+대상(3): `controller/AuthController` `controller/EmailVerificationController` `controller/PasswordResetController`
+→ 이 단계로 **auth main Java 0건**
+
+검토 예정 항목:
+- Kotlin controller 파라미터 nullability / **`@CookieValue(name = "refreshToken", required = false)`**
+  는 Kotlin 에서 `String?` 로 받아야 원본의 `INVALID_REFRESH_TOKEN` 분기가 유지된다
+- **`@AuthenticationPrincipal Long` 바인딩** — principal 은 `JwtTokenProvider.getAuthentication` 이 넣는 `memberId`
+- **HttpOnly 쿠키 계약** — `refreshToken`(Path `/`, SameSite `Lax`, Domain 미지정,
+  `autoLogin=false` 면 **Max-Age 미지정 세션 쿠키**, 로그아웃은 `Duration.ZERO`) /
+  `oauth_bcid`(Path `/api/auth/oauth`, 이미 있으면 **재사용**, 로그인 완료 후에도 삭제하지 않음)
+- API endpoint 12개 · 응답 메시지 문자열 · HTTP 상태(201/200/400/404/409/429) 와 ErrorCode 매핑
+- Jackson request binding / Bean Validation / 응답 JSON 계약
+- `OAuthEndpointRateLimitOrderTest` 가 고정하는 **필터 ↔ 컨트롤러 실행 순서**
+- 실제 카카오·구글 E2E → 아래 「표현 보정」절의 조건부 규칙을 따른다
+- 완료 확인: `git ls-files backend/src/main/java/com/dongnemarket/auth/ | wc -l` == 0
+
+---
+
+# 표현 보정 *(계획 단계에서 바로잡은 것)*
+
+계획서 초안에 부정확하거나 검증을 과대평가한 표현이 있어 실행 전에 바로잡는다.
+
+## `Member` 플랫폼 타입 — "그대로 선언한다" 는 성립하지 않는다
+
+초안에는 `MemberSocialAccount.member` 를 *"플랫폼 타입 그대로 선언한다"* 는 취지의 표현이 있었으나
+**정확하지 않다.** 플랫폼 타입(`Member!`)은 Java 에서 값이 **넘어올 때** 컴파일러가 부여하는 타입이고,
+**Kotlin 소스에 `Member!` 라고 적을 수는 없다.** 프로퍼티를 선언하는 쪽은 `Member` 든 `Member?` 든
+**둘 중 하나를 반드시 고르는 결정**이며, "결정을 미룬다" 는 선택지는 없다.
+
+따라서 2단계에서 다음 절차로 **실측해 결정한다**(현재 미확정).
+
+1. **기준 수집** — 기존 Java 필드의 null 허용 동작(`@JoinColumn(nullable = false)` 이지만
+   `protected` 무인자 생성자로 만들어진 직후에는 null)과 **JVM getter 시그니처**(`public Member getMember()`)
+2. **후보 비교** — `lateinit var member: Member` ↔ nullable 프로퍼티(`var member: Member? = null`)
+   ↔ 주 생성자 non-null 프로퍼티. 각각의 JVM 표면과 초기화 시점 동작이 다르다
+3. **검증** — ① JPA no-arg 생성(noarg 플러그인)으로 만들어진 미초기화 상태를 견디는가
+   ② `@ManyToOne(fetch = LAZY)` **프록시가 정상 생성**되는가
+   ③ 아직 Java 인 `AuthService` 의 `MemberSocialAccount::getMember` 메서드 레퍼런스가 그대로 컴파일되는가
+4. **확정 근거** — `javap` 시그니처 · JPA 기동(`ddl-auto=validate`) · 기존 Java 테스트 결과
+
+**아직 구현 전이므로 특정 선언 형태를 확정된 답처럼 적지 않는다.** 2단계 수행 후 실측 결과로 이 절을 대체한다.
+(`Member` 자체는 `member` 도메인 소유라 이 마이그레이션에서 수정 대상이 아니다.)
+
+## ktlint — task 성공은 스타일 검증이 아니다
+
+`backend/build.gradle` 의 ktlint 는 마이그레이션 기간 동안 **`ignoreFailures = true`** 다.
+위반이 있어도 task 는 성공한다 — **`ktlintMainSourceSetCheck` 가 BUILD SUCCESSFUL 인 것만으로는
+스타일이 검증됐다고 말할 수 없다.**
+
+각 단계에서 다음을 함께 수행한다.
+
+1. ktlint task 실행
+2. **신규 Kotlin 파일의 위반 목록을 리포트 본문에서 직접 확인**(task 종료 코드가 아니라 출력)
+3. **이번 PR 에서 추가된 신규 위반 0건**을 완료 조건으로 삼는다
+4. 이미 존재하던 위반은 **별도 문제로 구분**해 기록만 남기고 이 PR 에서 고치지 않는다
+   — 언어 변환 PR 에 무관한 diff 를 섞지 않는다
+
+## 실제 카카오·구글 E2E — 조건부 필수
+
+7단계의 "실제 소셜 로그인 왕복" 은 **환경이 갖춰졌을 때만 수행 가능한 수동 검증**이다.
+필요 조건: 제공자 콘솔의 유효한 client id/secret, **등록된 redirect URI**, 그 URI 로 접근 가능한 실행 환경.
+
+| 상황 | 요구 사항 |
+|---|---|
+| 자격증명·redirect URI·실행 환경이 준비됨 | 카카오·구글 각각 **실제 왕복 1회 이상 필수**. 결과(성공 여부, 발생 ErrorCode)를 PR 본문에 기록 |
+| 환경이 제공되지 않음 | MockWebServer 클라이언트 테스트 · Controller 슬라이스 테스트 · **callback 계약 테스트**(state 소비·`oauth_bcid` 쿠키·오류 매핑)까지 **필수** |
+
+**환경 부재와 기능 실패를 반드시 구분해 기록한다.** PR 본문에 "미실행(환경 미제공)" 과
+"실행했으나 실패" 를 **다른 항목**으로 적는다 — 뭉뚱그리면 다음 사람이 검증됐다고 오해한다.
+
+---
+
+# 공통 검증 게이트 *(1~7단계 전부)*
+
+CI 가 없으므로(위 「환경」) 아래를 **로컬에서 직접 실행하고 결과를 PR 본문에 기록**하는 것이 유일한 게이트다.
+
+```bash
+cd backend
+./gradlew compileKotlin
+./gradlew compileJava          # ← 전환으로 깨진 Java 호출부는 여기서만 드러난다 (grep 으로 찾지 않는다)
+./gradlew compileTestKotlin
+./gradlew compileTestJava      # ← 기존 Java 테스트 = 회귀 안전망. 여기가 깨지면 계약이 깨진 것
+./gradlew test
+./gradlew integrationTest      # Testcontainers Redis·MySQL (Docker 필요)
+./gradlew ktlintMainSourceSetCheck   # ⚠️ 위 「ktlint」절 — 종료 코드만으로 판단하지 않는다
+./gradlew bootJar
+./gradlew clean build
+```
+
+여기에 각 단계의 `javap` 비교(위 「검증 방법론」)와 단계별 검토 항목을 더한다.
+`develop` 병합 **직후** 전체 테스트를 한 번 더 돌린다 — Java↔Kotlin 혼재 기간의 도메인 간 컴파일
+영향은 자기 브랜치 테스트로 잡히지 않는다(`infra/infra.md`).

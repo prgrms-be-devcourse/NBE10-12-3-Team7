@@ -59,6 +59,9 @@ Controller → Service → Repository → Entity/DTO
 Java → Kotlin 전환을 도메인 단위로 진행한다. 전환된 파일은 `src/main/kotlin`, 남은 파일은
 `src/main/java` — 두 소스셋을 함께 컴파일하므로 **한 파일씩 옮길 수 있다.**
 
+실제 변환 사례, 실패 원인과 검증 방법은
+[Auth Java → Kotlin 마이그레이션 기록](docs/kotlin-migration/auth-migration-notes.md)에 누적한다.
+
 ### 빌드 설정 (팀장만 수정)
 
 `build.gradle` 의 Kotlin 플러그인은 전부 "Kotlin 클래스가 기본 `final`"이라 생기는 문제를 푸는 장치다.
