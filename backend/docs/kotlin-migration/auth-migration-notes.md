@@ -537,6 +537,141 @@ Kotlin 멤버는 기본 `final` 이다. 단순 문자열 diff 를 그대로 믿�
 **PR A 결과**: `test` 648건(기존 625 + 신규 23) · `integrationTest` 44건 · 전부 통과.
 JVM 공개 멤버 손실 0건. 운영 service/controller 코드 변경 0건.
 
+> ⚠️ 위 "공개 멤버 손실 0건" 은 **`javap -public` 기준**이라 `protected` 멤버를 포함하지 않는다.
+> 이후 `javap -p` 로 전수 재비교했을 때 요청 DTO 6개의 `protected` 무인자 생성자 손실이 드러났다 —
+> 아래 「보호 생성자」절 참고. 검증 기준은 그 시점부터 `javap -p` 다.
+
+---
+
+# 보호 생성자 — `javap -public` 의 검증 공백과 복원
+
+PR A 직후 발견해 같은 브랜치에서 고친 건이라 PR A 기록 바로 뒤에 붙인다.
+대상은 요청 DTO 6개: `LoginRequest` · `SignupRequest` · `EmailVerificationRequest` ·
+`EmailVerificationConfirmRequest` · `PasswordResetRequest` · `PasswordResetConfirmRequest`.
+
+## 검증 공백 — `javap -public` 은 protected 를 출력하지 않는다
+
+원본 Java 요청 DTO 는 전부 이런 모양이었다.
+
+```java
+public class LoginRequest {
+    private String email;
+    protected LoginRequest() { }                       // ← 이것
+    public LoginRequest(String email, String password) { ... }
+}
+```
+
+Kotlin 으로 옮기며 주 생성자 프로퍼티 방식을 쓰자 `protected` 무인자 생성자가 사라졌다.
+그런데 **PR A 의 검증은 이 손실을 잡지 못했다.**
+
+`javap -public` 은 이름 그대로 **public 멤버만** 출력한다. `protected LoginRequest()` 는
+변환 전 출력에도, 변환 후 출력에도 찍히지 않는다. 두 파일 모두에 없으니 diff 는 깨끗했다.
+`javap -p`(private·protected 포함)를 쓴 대상은 `OAuthLoginRequest` 하나뿐이었고, 그 클래스는
+**public 표면이 넓어지는** 반대 방향의 문제라 눈에 띄었을 뿐이다.
+
+> **교훈**: 검증 도구가 "무엇을 보여주지 않는지" 를 먼저 확인한다. 통과한 diff 가
+> "차이가 없다" 는 뜻인지 "그 차이를 볼 수 없었다" 는 뜻인지는 도구의 옵션이 결정한다.
+> 이 마이그레이션의 표면 판정 기준을 **`javap -p` 전수 비교**로 올린다.
+> `javap -public` 은 보조 자료로만 둔다.
+
+## 발견 경위
+
+최신 `origin/develop` 임시 병합 검증 중, 지정 항목(`OAuthLoginRequest`) 외에 **PR A 변환 대상
+18개 전체**를 `javap -p` 로 훑으면서 드러났다. 6개 클래스에서 동일한 형태로 빠져 있었다.
+
+## 왜 고쳤나 — 사용처가 없는데도
+
+먼저 영향도를 실측했다.
+
+| 항목 | 결과 |
+|---|---|
+| 이 6개를 상속하는 클래스 | **0건** |
+| `@ModelAttribute` 사용처(무인자 생성자 필요) | **0건** |
+| 사용 형태 | 전부 `@RequestBody` — Jackson 이 주 생성자로 역직렬화 |
+| 기존 테스트 | 648건 + integrationTest 44건 전부 통과 |
+
+**기능 영향은 없다.** 그럼에도 복원한 이유:
+
+1. 이 PR 은 **기능 변경이 0 인 순수 언어 전환**이다. `protected` 생성자도 원본 JVM 계약의
+   일부고, "지금 아무도 안 쓴다" 는 계약을 임의로 좁혀도 된다는 근거가 아니다.
+2. **기준의 일관성.** 같은 PR 이 `OAuthLoginRequest` 에서는 표면이 *넓어지는* 것을 막으려고
+   커밋을 따로 냈다. 반대 방향(좁아지는 것)만 눈감으면 기준이 서지 않는다.
+3. **선례.** 남은 2~7단계는 entity·repository·service 로 갈수록 표면 판단이 어렵고 사용처
+   조사도 부정확해진다. 여기서 "사용처 없으면 지워도 된다" 를 허용하면 그 기준이 그대로 따라간다.
+
+### 선택하지 않은 대안 — A안: "영향 없음으로 기록하고 제거 유지"
+
+| | 내용 |
+|---|---|
+| 내용 | 코드는 그대로 두고 PR 본문·문서에 "protected 생성자 6건 제거, 사용처 0건이라 영향 없음" 만 기록 |
+| 장점 | 코드 변경 0. Kotlin 관용구(주 생성자 프로퍼티)를 그대로 유지 |
+| **버린 이유** | 이번 한 번은 안전하지만 위 3번 그대로 **선례가 남는다.** 또 "영향 없음" 의 근거가 *현재 코드베이스 조사*뿐이라, 나중에 누가 상속하거나 `@ModelAttribute` 를 쓰면 조용히 깨진다. 순수 전환 PR 에서 표면을 좁힐 이유로는 약하다 |
+
+## 어떻게 고쳤나 — 주 생성자 유지, 보조 생성자만 복원
+
+DTO 전체를 mutable Java Bean 구조로 되돌리지 않았다. 주 생성자 프로퍼티는 그대로 두고
+**보조 생성자만 추가**하는 최소 변경이다.
+
+```kotlin
+open class EmailVerificationRequest(
+    @field:NotBlank(message = "이메일은 필수입니다.")
+    @field:Email(message = "이메일 형식이 올바르지 않습니다.")
+    open val email: String?,
+) {
+    protected constructor() : this(null)
+}
+```
+
+| 요소 | 이유 |
+|---|---|
+| `protected constructor() : this(null, ...)` | 원본 무인자 생성자가 남기던 필드 상태를 그대로 재현한다. String 은 `null`, primitive boolean 은 `false` — **새로 정한 기본값이 아니라 JVM 필드 기본값 그대로**라 도메인 의미를 만들지 않는다 |
+| `open class` | Kotlin 은 final 클래스에 `protected` 멤버를 두지 못한다. 원본 Java 클래스도 final 이 아니었으므로 원본과 같은 표면이다(`OAuthLoginRequest` 와 동일한 판단) |
+| `open val` | 원본 Java getter 는 오버라이드 가능했다. Kotlin 프로퍼티 접근자는 기본 `final` 이라 명시한다 |
+
+하지 않은 것: `@JvmOverloads` 신규 부착 · public 생성자 추가 · `var` 전환(원본에 없던 setter 가
+생겨 표면이 오히려 넓어진다) · JSON/Validation 계약 변경.
+
+### boolean getter 3개는 `final` 로 남는다 🔴 — Kotlin 하드 제약
+
+`isAutoLogin` · `isTermsAgreed` · `isPersonalInfoCollectionAgreed` 에는 `open` 을 붙이지 못했다.
+
+```
+e: '@JvmName' annotation is not applicable to this declaration.
+```
+
+Kotlin 은 **`@JvmName` 을 open 멤버에 금지한다** — 이름을 바꾼 getter 를 오버라이드 가능하게 두면
+가상 디스패치가 깨지기 때문이다. 둘 중 하나만 가질 수 있고 `@get:JvmName` 을 택했다.
+
+- 이름을 잃으면 `AuthController` 의 `isAutoLogin()` 호출부와 **JSON 필드명이 함께 깨진다**
+  (PR A 의 회귀 1번과 같은 종류의 사고).
+- getter 오버라이드 가능성은 실제로 쓰는 곳이 없다.
+
+즉 이 3개의 finality 차이는 **선택이 아니라 언어 제약**이다.
+
+## 수정 후 최종 결과
+
+**bytecode (`javap -p`, 6개 전부)**
+
+| 항목 | 결과 |
+|---|---|
+| 클래스 선언 | `public class …`(non-final) — **원본과 일치** |
+| `protected` 무인자 생성자 | **1:1 복원** |
+| public 생성자 개수(synthetic 제외) | `LoginRequest` 2 · 나머지 1 — **원본과 동일** |
+| String getter | non-final — **원본과 일치** |
+| boolean getter | `final` — 위 Kotlin 제약 |
+| private 필드 | `private final`(원본 `private`) — `val` 의 결과 |
+
+**PR A 변환 대상 18개 전수 `javap -p` 재비교: 이름+descriptor 기준 멤버 손실 0건.**
+
+**Jackson** — 무인자 생성자가 생겼다고 Jackson 이 "무인자 + 필드 주입" 경로로 갈아타면
+final 필드 때문에 값이 조용히 비게 된다. 실제 값이 채워지는지 직접 확인했다:
+정상 body · 필드 누락 · 명시적 `null` · 빈 문자열 · boolean 누락/명시값 전부 원본과 동일.
+
+**Validation** — 역직렬화 성공과 Validation 실패가 분리돼 있고, 제약 메시지·대상 필드가 원본과
+같다. **`protected` 무인자로 만든 인스턴스도 동일하게 위반이 검출된다**(복원이 우회 경로를 만들지 않았다).
+
+**테스트** — 호환성 테스트 14건 추가(23 → 37건), `test` 662건(648 + 14) 전부 통과.
+
 ---
 
 # 이후 단계 계획 — 5단계(A~E)에서 7단계로 재분할 *(예정 — 미착수)*
