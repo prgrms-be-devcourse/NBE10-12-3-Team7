@@ -77,7 +77,7 @@ class AdminStorageServiceTest {
 
             List<OrphanFileResponse> orphans = adminStorageService.scanOrphans(24);
 
-            assertThat(orphans).extracting(OrphanFileResponse::filename).containsExactly("orphan.png");
+            assertThat(orphans).extracting(OrphanFileResponse::getFilename).containsExactly("orphan.png");
         }
 
         @Test
@@ -89,7 +89,7 @@ class AdminStorageServiceTest {
 
             List<OrphanFileResponse> orphans = adminStorageService.scanOrphans(24);
 
-            assertThat(orphans).extracting(OrphanFileResponse::filename).containsExactly("stale.png");
+            assertThat(orphans).extracting(OrphanFileResponse::getFilename).containsExactly("stale.png");
         }
     }
 
@@ -108,9 +108,9 @@ class AdminStorageServiceTest {
             OrphanDeleteResponse res = adminStorageService.deleteOrphans(
                     new OrphanDeleteRequest(List.of(new OrphanTarget(PRODUCT_IMAGES, "orphan.png"))), 24);
 
-            assertThat(res.requested()).isEqualTo(1);
-            assertThat(res.deleted()).isEqualTo(1);
-            assertThat(res.skipped()).isZero();
+            assertThat(res.getRequested()).isEqualTo(1);
+            assertThat(res.getDeleted()).isEqualTo(1);
+            assertThat(res.getSkipped()).isZero();
         }
 
         @Test
@@ -124,9 +124,9 @@ class AdminStorageServiceTest {
             OrphanDeleteResponse res = adminStorageService.deleteOrphans(
                     new OrphanDeleteRequest(List.of(new OrphanTarget(PRODUCT_IMAGES, "used.png"))), 24);
 
-            assertThat(res.requested()).isEqualTo(1);
-            assertThat(res.deleted()).isZero();
-            assertThat(res.skipped()).isEqualTo(1);
+            assertThat(res.getRequested()).isEqualTo(1);
+            assertThat(res.getDeleted()).isZero();
+            assertThat(res.getSkipped()).isEqualTo(1);
             then(fileStorageService).should(never()).delete(anyString(), anyString());
         }
 
