@@ -17,7 +17,7 @@ import java.security.Principal;
  * 채팅방 토픽 구독 인가. {@code /topic/chat-rooms/{roomId}} 구독은 해당 방 참여자(구매자·판매자)만 허용한다.
  * <p>공유 인바운드 채널이라 경매 등 다른 도메인의 SUBSCRIBE 프레임도 이 인터셉터를 거치므로,
  * <b>채팅 목적지가 아니면 그대로 통과</b>시킨다(경매 구독을 깨지 않기 위함).
- * <p>인증(principal) 은 {@link com.dongnemarket.realtime.interceptor.JwtChannelInterceptor} 가 CONNECT 시점에 심어둔 것을 재사용한다.
+ * <p>인증(principal) 은 {@link com.dongnemarket.global.websocket.JwtChannelInterceptor} 가 CONNECT 시점에 심어둔 것을 재사용한다.
  */
 @Component
 public class ChatSubscribeInterceptor implements ChannelInterceptor {
