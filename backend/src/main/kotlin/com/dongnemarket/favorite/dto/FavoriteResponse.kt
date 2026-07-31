@@ -6,7 +6,7 @@ import java.time.LocalDateTime
 @ConsistentCopyVisibility
 data class FavoriteResponse private constructor(
     val id: Long?,
-    val productId: Long,
+    val productId: Long?,
     val createdAt: LocalDateTime?,
 ) {
     companion object {

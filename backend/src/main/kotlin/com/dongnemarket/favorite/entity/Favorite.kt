@@ -44,8 +44,8 @@ class Favorite private constructor(
         protected set
 
     /** 연관 프록시의 식별자만 반환한다(식별자 접근은 프록시 초기화를 유발하지 않음). */
-    val memberId: Long get() = member.id
-    val productId: Long get() = product.id
+    val memberId: Long? get() = member.id
+    val productId: Long? get() = product.id
 
     companion object {
         @JvmStatic
