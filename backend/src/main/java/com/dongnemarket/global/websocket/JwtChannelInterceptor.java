@@ -1,4 +1,4 @@
-package com.dongnemarket.realtime.interceptor;
+package com.dongnemarket.global.websocket;
 
 import com.dongnemarket.global.security.jwt.JwtTokenProvider;
 import io.jsonwebtoken.JwtException;

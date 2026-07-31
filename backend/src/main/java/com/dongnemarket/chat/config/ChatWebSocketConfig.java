@@ -1,7 +1,7 @@
 package com.dongnemarket.chat.config;
 
 import com.dongnemarket.chat.interceptor.ChatSubscribeInterceptor;
-import com.dongnemarket.realtime.interceptor.JwtChannelInterceptor;
+import com.dongnemarket.global.websocket.JwtChannelInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;

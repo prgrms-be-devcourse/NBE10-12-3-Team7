@@ -1,4 +1,4 @@
-package com.dongnemarket.realtime.config;
+package com.dongnemarket.global.websocket;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
@@ -7,7 +7,7 @@ import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
 /**
- * 실시간 경매 WebSocket(STOMP) 설정.
+ * 실시간(STOMP) WebSocket 공용 설정. 경매·채팅·알림이 이 브로커 하나를 공유한다.
  * /ws 로 핸드셰이크, /app 로 들어온 메시지는 @MessageMapping 핸들러로,
  * /topic 구독자에게는 심플 브로커가 브로드캐스트한다.
  * <p>{@code /queue}는 user destination({@code convertAndSendToUser} → {@code /user/{id}/queue/**} →
