@@ -1,9 +1,11 @@
 name: dongnemarket
 
-# dev(매일 개발) 전용 — MySQL·Redis만 컨테이너로 띄우고 앱·프론트는 호스트에서 직접 실행한다.
-#   docker compose up -d --wait          # MySQL·Redis
+# dev(매일 개발) 전용 — MySQL·Redis·Ollama를 컨테이너로 띄우고 앱·프론트는 호스트에서 직접 실행한다.
+#   docker compose up -d --wait          # MySQL·Redis·Ollama(+ 최초 1회 모델 자동 pull)
 #   (cd backend && ./gradlew bootRun)    # 백엔드 :8080 (프로파일 미지정 → dev)
 #   (cd frontend && npm run dev)         # 프론트 :3000
+# ※ 최초 up 시 ollama-pull이 모델(qwen3:1.7b, ~1.4GB)을 받느라 몇 분 걸린다(볼륨에 남아 이후엔 즉시).
+#   덕분에 AI 어시스턴트를 쓰려고 Ollama 앱을 따로 설치할 필요가 없다.
 #
 # 전체 컨테이너 배포(nginx+next+app+mysql)는 지형별로 분리돼 있다:
 #   온프레미스 → infra/onprem/     (로컬 전체 스택, 이미지 로컬 빌드)
@@ -47,6 +49,36 @@ services:
       timeout: 5s
       retries: 10
 
+  # 관리자 AI 어시스턴트용 Ollama. mysql·redis와 같은 base 서비스(프로파일 없음) — 전원 기본 기동.
+  # 호스트에서 bootRun하는 백엔드가 localhost:11434로 접속하므로 앱 설정은 무변경.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dongne-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - dongne-ollama-data:/root/.ollama   # 받은 모델 영속화 → 재기동 후 재다운로드 방지
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # one-shot: ollama가 healthy해지면 모델을 pull하고 스스로 종료(exit 0).
+  # up -d --wait 가 이 완료까지 기다린다 → 최초엔 몇 분(모델 받는 중), 이후엔 즉시 통과.
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: dongne-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: ollama:11434                 # pull 대상 = ollama 서버 컨테이너
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:1.7b} # 백엔드 dev 기본값과 동일
+    entrypoint: ["/bin/sh", "-c", "ollama pull $$OLLAMA_MODEL"]
+    restart: "no"
+
 volumes:
   dongne-mysql-data:
   dongne-redis-data:
+  dongne-ollama-data:

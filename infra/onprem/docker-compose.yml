@@ -48,6 +48,32 @@ services:
       timeout: 5s
       retries: 10
 
+  # 관리자 AI 어시스턴트용 Ollama — 온프레미스 스택 내 컨테이너(사내 서버 대체, qwen3:1.7b 통일).
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dongne-ollama
+    restart: unless-stopped
+    volumes:
+      - dongne-ollama-data:/root/.ollama   # 받은 모델 영속화 → 재기동 후 재다운로드 방지
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # one-shot: ollama가 healthy해지면 모델을 pull하고 종료(exit 0). app은 이 완료를 기다린 뒤 기동.
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: dongne-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:1.7b}
+    entrypoint: ["/bin/sh", "-c", "ollama pull $$OLLAMA_MODEL"]
+    restart: "no"
+
   app:
     build:
       context: ../../backend          # ← 리포 루트 기준(이 폴더에서 두 단계 위)
@@ -60,6 +86,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
     environment:
       SPRING_PROFILES_ACTIVE: prod
       DB_URL: jdbc:mysql://mysql:3306/dongne_market?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
@@ -69,6 +99,9 @@ services:
       # 인증 관련 TTL 데이터 저장소(같은 스택의 redis 컨테이너)
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # 관리자 AI(Ollama). 같은 스택의 ollama 컨테이너를 가리킨다(사내 서버 대체, qwen3:1.7b 통일).
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:1.7b}
       # 이메일 인증/비밀번호 재설정 메일 발송. 계정 정보는 기본값 없이 .env에서만 관리.
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
@@ -177,6 +210,7 @@ services:
 volumes:
   dongne-mysql-data:
   dongne-redis-data:
+  dongne-ollama-data:
   dongne-uploads:
   prometheus-data:
   grafana-data:
