@@ -26,6 +26,7 @@ class AskData(BaseModel):
     sources: list[Source] = []
     inScope: bool
     grounded: bool
+    emergency: bool
 
 
 class ApiResponse(BaseModel):
@@ -48,5 +49,6 @@ def legal_ask(request: AskRequest) -> ApiResponse:
         sources=result.get("sources", []),
         inScope=bool(result.get("in_scope", False)),
         grounded=bool(result.get("grounded", False)),
+        emergency=bool(result.get("emergency", False)),
     )
     return ApiResponse(data=data)
