@@ -357,6 +357,240 @@ class AuthKotlinInteropCompatibilityTest {
 		}
 	}
 
+	/**
+	 * 요청 DTO 6개의 {@code protected} 무인자 생성자 표면.
+	 * <p>원본 Java 에는 있었으나 주 생성자 프로퍼티로 옮기면서 사라졌던 것을 복원했다.
+	 * PR A 는 이 6개를 {@code javap -public} 으로 검증했는데 <b>{@code -public} 은 protected 멤버를 아예
+	 * 출력하지 않아</b> 손실을 놓쳤다. 이 클래스가 그 공백을 테스트로 메운다.
+	 */
+	@Nested
+	@DisplayName("요청 DTO protected 무인자 생성자 표면")
+	class RequestDtoProtectedConstructorSurface {
+
+		@Test
+		@DisplayName("6개 모두 무인자 생성자를 가지며 접근 제한자가 protected 다")
+		void protectedNoArgConstructorRestored() throws Exception {
+			for (Class<?> type : restoredTypes()) {
+				java.lang.reflect.Constructor<?> noArg = type.getDeclaredConstructor();
+				assertThat(java.lang.reflect.Modifier.isProtected(noArg.getModifiers()))
+						.as("%s 의 무인자 생성자는 protected 여야 한다", type.getSimpleName())
+						.isTrue();
+			}
+		}
+
+		@Test
+		@DisplayName("public 무인자 생성자는 없다 — 복원이 공개 표면을 넓히지 않았다")
+		void noPublicNoArgConstructor() {
+			for (Class<?> type : restoredTypes()) {
+				assertThat(java.util.Arrays.stream(type.getConstructors()).anyMatch(c -> c.getParameterCount() == 0))
+						.as("%s 에 public 무인자 생성자가 생기면 안 된다", type.getSimpleName())
+						.isFalse();
+			}
+		}
+
+		@Test
+		@DisplayName("원본에 없던 public 생성자 오버로드가 추가되지 않았다 (Kotlin synthetic 생성자 제외)")
+		void publicConstructorCountMatchesOriginal() {
+			// 원본 Java 의 public 생성자 개수. LoginRequest 만 2개(@JvmOverloads 로 재현), 나머지는 1개다.
+			assertThat(publicConstructorCount(LoginRequest.class)).isEqualTo(2);
+			assertThat(publicConstructorCount(SignupRequest.class)).isEqualTo(1);
+			assertThat(publicConstructorCount(EmailVerificationRequest.class)).isEqualTo(1);
+			assertThat(publicConstructorCount(EmailVerificationConfirmRequest.class)).isEqualTo(1);
+			assertThat(publicConstructorCount(PasswordResetRequest.class)).isEqualTo(1);
+			assertThat(publicConstructorCount(PasswordResetConfirmRequest.class)).isEqualTo(1);
+		}
+
+		@Test
+		@DisplayName("6개 모두 final 이 아니다 — Java 클래스는 기본 non-final 이었다")
+		void classesAreNotFinal() {
+			for (Class<?> type : restoredTypes()) {
+				assertThat(java.lang.reflect.Modifier.isFinal(type.getModifiers()))
+						.as("%s 는 final 이면 안 된다", type.getSimpleName())
+						.isFalse();
+			}
+		}
+
+		@Test
+		@DisplayName("String getter 는 오버라이드 가능하다 — 원본 Java getter 와 같다")
+		void stringGettersAreOverridable() throws Exception {
+			assertThat(java.lang.reflect.Modifier.isFinal(
+					LoginRequest.class.getMethod("getEmail").getModifiers())).isFalse();
+			assertThat(java.lang.reflect.Modifier.isFinal(
+					SignupRequest.class.getMethod("getNickname").getModifiers())).isFalse();
+			assertThat(java.lang.reflect.Modifier.isFinal(
+					PasswordResetConfirmRequest.class.getMethod("getToken").getModifiers())).isFalse();
+		}
+
+		@Test
+		@DisplayName("무인자 생성자로 만든 인스턴스 상태가 원본 Java 와 같다 (String=null · boolean=false)")
+		void noArgInstanceMatchesJavaFieldDefaults() throws Exception {
+			LoginRequest login = viaProtectedNoArg(LoginRequest.class);
+			assertThat(login.getEmail()).isNull();
+			assertThat(login.getPassword()).isNull();
+			assertThat(login.isAutoLogin()).isFalse();
+
+			SignupRequest signup = viaProtectedNoArg(SignupRequest.class);
+			assertThat(signup.getEmail()).isNull();
+			assertThat(signup.getPassword()).isNull();
+			assertThat(signup.getNickname()).isNull();
+			assertThat(signup.isTermsAgreed()).isFalse();
+			assertThat(signup.isPersonalInfoCollectionAgreed()).isFalse();
+
+			assertThat(viaProtectedNoArg(EmailVerificationConfirmRequest.class).getEmail()).isNull();
+			assertThat(viaProtectedNoArg(EmailVerificationConfirmRequest.class).getCode()).isNull();
+			assertThat(viaProtectedNoArg(PasswordResetConfirmRequest.class).getNewPassword()).isNull();
+		}
+	}
+
+	/**
+	 * 생성자 복원 후에도 Jackson 역직렬화가 원본 Java 와 동일하게 동작하는지 확인한다.
+	 * protected 무인자 생성자가 생겼다고 해서 Jackson 이 "무인자 생성자 + 필드 주입" 경로로 갈아타면
+	 * final 필드(val) 때문에 조용히 값이 비게 되므로, 실제 값이 채워지는지를 직접 본다.
+	 */
+	@Nested
+	@DisplayName("요청 DTO Jackson 역직렬화 (생성자 복원 후)")
+	class RequestDtoJackson {
+
+		@Test
+		@DisplayName("정상 요청 body 가 그대로 채워진다")
+		void normalBodyDeserializes() throws Exception {
+			LoginRequest login = objectMapper.readValue(
+					"{\"email\":\"a@b.com\",\"password\":\"pw\",\"autoLogin\":true}", LoginRequest.class);
+			assertThat(login.getEmail()).isEqualTo("a@b.com");
+			assertThat(login.getPassword()).isEqualTo("pw");
+			assertThat(login.isAutoLogin()).isTrue();
+
+			SignupRequest signup = objectMapper.readValue(
+					"{\"email\":\"a@b.com\",\"password\":\"Password1!ok\",\"nickname\":\"nick\","
+							+ "\"termsAgreed\":true,\"personalInfoCollectionAgreed\":true}", SignupRequest.class);
+			assertThat(signup.getEmail()).isEqualTo("a@b.com");
+			assertThat(signup.getNickname()).isEqualTo("nick");
+			assertThat(signup.isTermsAgreed()).isTrue();
+			assertThat(signup.isPersonalInfoCollectionAgreed()).isTrue();
+
+			assertThat(objectMapper.readValue("{\"email\":\"a@b.com\",\"code\":\"123456\"}",
+					EmailVerificationConfirmRequest.class).getCode()).isEqualTo("123456");
+			assertThat(objectMapper.readValue("{\"token\":\"tok\",\"newPassword\":\"Password1!ok\"}",
+					PasswordResetConfirmRequest.class).getNewPassword()).isEqualTo("Password1!ok");
+		}
+
+		@Test
+		@DisplayName("필드가 빠지면 null 이다 — 예외로 바뀌지 않았다")
+		void absentFieldsBecomeNull() throws Exception {
+			assertThat(objectMapper.readValue("{}", EmailVerificationRequest.class).getEmail()).isNull();
+			assertThat(objectMapper.readValue("{}", PasswordResetRequest.class).getEmail()).isNull();
+			assertThat(objectMapper.readValue("{\"email\":\"a@b.com\"}", LoginRequest.class).getPassword()).isNull();
+			assertThat(objectMapper.readValue("{}", PasswordResetConfirmRequest.class).getToken()).isNull();
+		}
+
+		@Test
+		@DisplayName("명시적 null 도 null 이다")
+		void explicitNullStaysNull() throws Exception {
+			assertThat(objectMapper.readValue("{\"email\":null}", EmailVerificationRequest.class).getEmail()).isNull();
+			assertThat(objectMapper.readValue("{\"email\":null,\"password\":null}", LoginRequest.class).getEmail()).isNull();
+			assertThat(objectMapper.readValue("{\"token\":null,\"newPassword\":null}",
+					PasswordResetConfirmRequest.class).getNewPassword()).isNull();
+		}
+
+		@Test
+		@DisplayName("빈 문자열은 빈 문자열로 유지된다 (null 로 바뀌지 않는다) — Validation 이 걸러낼 몫이다")
+		void blankStringStaysBlank() throws Exception {
+			assertThat(objectMapper.readValue("{\"email\":\"\"}", EmailVerificationRequest.class).getEmail()).isEmpty();
+			assertThat(objectMapper.readValue("{\"email\":\"\",\"password\":\"\"}", LoginRequest.class).getPassword())
+					.isEmpty();
+		}
+
+		@Test
+		@DisplayName("boolean 필드는 빠지면 false, 명시하면 그 값이다 (Java 필드 기본값과 동일)")
+		void booleanFieldAbsentOrExplicit() throws Exception {
+			assertThat(objectMapper.readValue("{\"email\":\"a@b.com\",\"password\":\"pw\"}", LoginRequest.class)
+					.isAutoLogin()).isFalse();
+			assertThat(objectMapper.readValue("{\"email\":\"a@b.com\",\"password\":\"pw\",\"autoLogin\":false}",
+					LoginRequest.class).isAutoLogin()).isFalse();
+
+			SignupRequest partial = objectMapper.readValue(
+					"{\"email\":\"a@b.com\",\"password\":\"pw\",\"nickname\":\"n\",\"termsAgreed\":true}",
+					SignupRequest.class);
+			assertThat(partial.isTermsAgreed()).isTrue();
+			assertThat(partial.isPersonalInfoCollectionAgreed()).isFalse();
+		}
+	}
+
+	/**
+	 * 역직렬화 성공 여부와 Validation 실패 여부는 별개다. 생성자를 복원했다고 해서 제약을 건너뛰는
+	 * 경로가 생기면 안 된다 — 어떤 경로로 만들어진 인스턴스든 같은 위반이 검출돼야 한다.
+	 */
+	@Nested
+	@DisplayName("요청 DTO Bean Validation (생성자 복원 후)")
+	class RequestDtoValidationAfterRestore {
+
+		@Test
+		@DisplayName("역직렬화는 성공하고 Validation 이 따로 위반을 낸다 — 두 단계가 분리돼 있다")
+		void deserializationSucceedsAndValidationFailsSeparately() throws Exception {
+			EmailVerificationRequest blank = objectMapper.readValue("{\"email\":\"\"}", EmailVerificationRequest.class);
+			assertThat(blank).isNotNull(); // 역직렬화 자체는 성공한다
+			assertThat(violatedProperties(validator.validate(blank))).containsExactly("email");
+
+			PasswordResetConfirmRequest missing =
+					objectMapper.readValue("{}", PasswordResetConfirmRequest.class);
+			assertThat(missing).isNotNull();
+			assertThat(violatedProperties(validator.validate(missing)))
+					.containsExactlyInAnyOrder("token", "newPassword");
+		}
+
+		@Test
+		@DisplayName("제약 메시지와 대상 필드가 원본과 같다")
+		void constraintMessagesUnchanged() {
+			Set<ConstraintViolation<EmailVerificationConfirmRequest>> violations =
+					validator.validate(new EmailVerificationConfirmRequest("", ""));
+			assertThat(violatedProperties(violations)).containsExactlyInAnyOrder("email", "code");
+			assertThat(violations).extracting(ConstraintViolation::getMessage)
+					.contains("이메일은 필수입니다.", "인증 코드는 필수입니다.");
+
+			assertThat(validator.validate(new PasswordResetRequest("")))
+					.extracting(ConstraintViolation::getMessage)
+					.containsExactly("이메일은 필수입니다.");
+		}
+
+		@Test
+		@DisplayName("protected 무인자 생성자로 만든 인스턴스도 동일하게 위반이 검출된다 — 우회 경로가 아니다")
+		void protectedNoArgDoesNotBypassValidation() throws Exception {
+			assertThat(violatedProperties(validator.validate(viaProtectedNoArg(LoginRequest.class))))
+					.containsExactlyInAnyOrder("email", "password");
+			assertThat(violatedProperties(validator.validate(viaProtectedNoArg(EmailVerificationConfirmRequest.class))))
+					.containsExactlyInAnyOrder("email", "code");
+			assertThat(violatedProperties(validator.validate(viaProtectedNoArg(PasswordResetConfirmRequest.class))))
+					.containsExactlyInAnyOrder("token", "newPassword");
+			assertThat(violatedProperties(validator.validate(viaProtectedNoArg(SignupRequest.class))))
+					.containsExactlyInAnyOrder("email", "password", "nickname");
+		}
+	}
+
+	/** 이번 PR 에서 protected 무인자 생성자를 복원한 요청 DTO 6개. */
+	private static Class<?>[] restoredTypes() {
+		return new Class<?>[] {
+				LoginRequest.class, SignupRequest.class, EmailVerificationRequest.class,
+				EmailVerificationConfirmRequest.class, PasswordResetRequest.class, PasswordResetConfirmRequest.class,
+		};
+	}
+
+	/**
+	 * Kotlin 이 기본 인자 때문에 만드는 {@code DefaultConstructorMarker} 생성자는 {@code ACC_SYNTHETIC} 이라
+	 * Java 소스에서 호출할 수 없다. "원본에 없던 생성자가 늘었는가"를 볼 때는 세지 않는다.
+	 */
+	private static long publicConstructorCount(Class<?> type) {
+		return java.util.Arrays.stream(type.getConstructors())
+				.filter(c -> !c.isSynthetic())
+				.count();
+	}
+
+	/** protected 무인자 생성자로 인스턴스를 만든다 — 원본 Java 에서 하위 클래스가 할 수 있던 것과 같은 경로다. */
+	private static <T> T viaProtectedNoArg(Class<T> type) throws Exception {
+		java.lang.reflect.Constructor<T> constructor = type.getDeclaredConstructor();
+		constructor.setAccessible(true);
+		return constructor.newInstance();
+	}
+
 	private OAuthLoginRequest oauthLoginRequest(String json) throws Exception {
 		return objectMapper.readValue(json, OAuthLoginRequest.class);
 	}
