@@ -1,5 +1,6 @@
 # EC2 #1 (app) 전용. mysql 없음 → 외부 DB(RDB EC2). 이미지는 ECR pull.
-# Redis는 이 EC2에 co-locate(인증 TTL 데이터 전용 — ../../infra.md).
+# Redis·Ollama를 이 EC2에 co-locate. Redis=인증 TTL 데이터(../../infra.md),
+# Ollama=관리자 AI(사내 서버 폐기, qwen3:1.7b 통일). 자원 압박 시 전용 EC2 분리 재검토.
 # 사용(EC2 #1, 이 폴더에서):
 #   docker compose --env-file .env pull
 #   docker compose --env-file .env up -d
@@ -21,6 +22,32 @@ services:
       timeout: 5s
       retries: 10
 
+  # 관리자 AI 어시스턴트용 Ollama — 이 앱 EC2에 co-locate(redis와 동급). 사내 Ollama 서버 대체.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dongne-ollama
+    restart: unless-stopped
+    volumes:
+      - dongne-ollama-data:/root/.ollama   # 받은 모델 영속화 → 재기동 후 재다운로드 방지
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # one-shot: ollama가 healthy해지면 모델을 pull하고 종료(exit 0). app은 이 완료를 기다린 뒤 기동.
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: dongne-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:1.7b}
+    entrypoint: ["/bin/sh", "-c", "ollama pull $$OLLAMA_MODEL"]
+    restart: "no"
+
   app:
     image: ${ECR_REGISTRY}/dongnemarket-app:${IMAGE_TAG:-latest}
     container_name: dongne-app
@@ -28,6 +55,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
     environment:
       SPRING_PROFILES_ACTIVE: prod           # prometheus 노출(모니터 EC2가 scrape)
       DB_URL: ${DB_URL}                       # ← RDB EC2 프라이빗 IP (.env)
@@ -37,8 +68,8 @@ services:
       # 인증 관련 TTL 데이터 저장소(같은 EC2의 redis 컨테이너)
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}     # AWS에서 접근 가능한 주소여야 함
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:14b}
+      OLLAMA_BASE_URL: http://ollama:11434    # 같은 EC2에 co-locate된 ollama 컨테이너
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:1.7b}
       # 이메일 인증/비번 재설정 메일 발송(팀 기능). 계정정보는 .env에서만 관리
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
@@ -84,3 +115,4 @@ services:
 
 volumes:
   dongne-redis-data:
+  dongne-ollama-data:
