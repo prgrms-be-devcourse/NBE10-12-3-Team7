@@ -8,7 +8,7 @@ import java.math.BigDecimal
 @ConsistentCopyVisibility
 data class FavoriteProductSummary private constructor(
     val productId: Long,
-    val categoryId: Long,
+    val categoryId: Long?,
     val title: String,
     val price: BigDecimal,
     val regionCode: String,
