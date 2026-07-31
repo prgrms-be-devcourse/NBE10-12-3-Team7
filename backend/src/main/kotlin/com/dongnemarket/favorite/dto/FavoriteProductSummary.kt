@@ -8,7 +8,10 @@ import java.math.BigDecimal
 @ConsistentCopyVisibility
 data class FavoriteProductSummary private constructor(
     val productId: Long,
-    val categoryId: Long,
+    // Category 가 Kotlin 이 되면서 `id` 가 `Long?` 이 되었다(미영속 엔티티는 id 가 없다).
+    // AdminProductResponse.categoryId 와 같은 판단 — DTO 쪽을 nullable 로 맞춘다.
+    // `!!` 를 쓰면 영속 전 Category 가 섞여 들어오는 순간 NPE 로 터진다.
+    val categoryId: Long?,
     val title: String,
     val price: BigDecimal,
     val regionCode: String,
