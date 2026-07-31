@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { getAccessToken } from '@/lib/auth'
+import ConfirmModal from '@/components/ConfirmModal'
 import styles from '../admin.module.css'
 
 interface Comment {
@@ -25,6 +26,7 @@ export default function AdminCommentsPage() {
   const [keyword, setKeyword] = useState('')
   const [query, setQuery] = useState('')
   const [productIdFilter, setProductIdFilter] = useState('')
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
 
   useEffect(() => {
     const token = getAccessToken()
@@ -48,7 +50,7 @@ export default function AdminCommentsPage() {
   }, [])
 
   async function deleteComment(commentId: number) {
-    if (!window.confirm('이 댓글을 삭제할까요?')) return
+    setPendingDeleteId(null)
     const token = getAccessToken()
     if (!token) return
     try {
@@ -89,7 +91,7 @@ export default function AdminCommentsPage() {
             <label>상품ID</label>
             <input value={productIdFilter} onChange={e => setProductIdFilter(e.target.value)} placeholder="상품 ID로 필터" inputMode="numeric" />
           </div>
-          <button type="submit" className="btn">검색</button>
+          <button type="submit" className={`btn ${styles.filterBtn}`}>검색</button>
         </form>
 
         <div className={styles.tablewrap}>
@@ -109,13 +111,24 @@ export default function AdminCommentsPage() {
                     {c.content}
                   </td>
                   <td>{c.createdAt.slice(0, 10)}</td>
-                  <td><button type="button" className="btn danger" disabled={!!c.deletedAt} onClick={() => deleteComment(c.commentId)}>삭제</button></td>
+                  <td><button type="button" className="btn danger" disabled={!!c.deletedAt} onClick={() => setPendingDeleteId(c.commentId)}>삭제</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {pendingDeleteId != null && (
+        <ConfirmModal
+          message="이 댓글을 삭제할까요?"
+          confirmText="삭제"
+          cancelText="취소"
+          danger
+          onConfirm={() => deleteComment(pendingDeleteId)}
+          onCancel={() => setPendingDeleteId(null)}
+        />
+      )}
     </>
   )
 }

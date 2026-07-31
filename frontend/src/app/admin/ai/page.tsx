@@ -21,6 +21,14 @@ const SUGGESTED_QUESTIONS = [
 
 let nextMessageId = 1
 
+function AiIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.937A2 2 0 0 0 9.937 8.5l1.581-6.135a.5.5 0 0 1 .964 0L13.5 8.5a2 2 0 0 0 1.437 1.437l6.135 1.581a.5.5 0 0 1 0 .964L14.937 13.5A2 2 0 0 0 13.5 14.937l-1.581 6.135a.5.5 0 0 1-.964 0z" />
+    </svg>
+  )
+}
+
 export default function AdminAiPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { id: nextMessageId++, role: 'ai', text: '안녕하세요. 관리 데이터를 조회해 드립니다. 예: "오늘 접수 대기 신고 몇 건이야?"' },
@@ -74,6 +82,7 @@ export default function AdminAiPage() {
     <div className={styles.aiShell}>
       <div className={styles.aiHead}>
         <h1 className={styles.aiTitle}>
+          <span className={styles.aiIcon}><AiIcon /></span>
           AI 어시스턴트
           <span className={`${styles.tag} ${styles.tagPink}`}>읽기 전용</span>
         </h1>
@@ -87,13 +96,17 @@ export default function AdminAiPage() {
               key={m.id}
               className={`${styles.chatMsg}${m.role === 'user' ? ' ' + styles.user : ''}${m.role === 'error' ? ' ' + styles.error : ''}`}
             >
-              {m.role !== 'user' && <div className={styles.chatAvatar}>AI</div>}
+              {m.role !== 'user' && (
+                <div className={`${styles.chatAvatar}${m.role === 'error' ? ' ' + styles.chatAvatarError : ''}`}>
+                  <AiIcon />
+                </div>
+              )}
               <div className={styles.chatBubble}>{m.text}</div>
             </div>
           ))}
           {sending && (
             <div className={styles.chatMsg}>
-              <div className={styles.chatAvatar}>AI</div>
+              <div className={styles.chatAvatar}><AiIcon /></div>
               <div className={`${styles.chatBubble} ${styles.typing}`} aria-label="답변 생성 중">
                 <span /><span /><span />
               </div>
