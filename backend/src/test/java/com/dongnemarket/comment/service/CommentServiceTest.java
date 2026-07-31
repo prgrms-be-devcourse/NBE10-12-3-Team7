@@ -18,12 +18,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
@@ -48,6 +50,9 @@ class CommentServiceTest {
 
     @Mock
     EntityManager entityManager;
+
+    @Mock
+    ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     CommentService commentService;
@@ -96,7 +101,7 @@ class CommentServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_NOT_FOUND);
 
-            verify(commentRepository, never()).findAllWithMemberByProduct_Id(any());
+            verify(commentRepository, never()).findAllWithMemberByProduct_Id(anyLong());
         }
     }
 
