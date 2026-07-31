@@ -566,6 +566,91 @@ class AuthKotlinInteropCompatibilityTest {
 		}
 	}
 
+	/**
+	 * 응답 DTO 6개의 클래스·getter finality. 원본 Java 클래스와 getter 는 non-final 이었는데
+	 * Kotlin 기본값이 final 이라 전환 과정에서 좁아졌던 것을 복원했다.
+	 * <p>요청 DTO 와 달리 원본 필드가 이미 {@code private final} 이라 필드 쪽 차이는 애초에 없다.
+	 */
+	@Nested
+	@DisplayName("응답 DTO 클래스·getter 표면")
+	class ResponseDtoSurface {
+
+		@Test
+		@DisplayName("6개 모두 final 이 아니다 — 원본 Java 클래스와 같다")
+		void classesAreNotFinal() {
+			for (Class<?> type : responseTypes()) {
+				assertThat(java.lang.reflect.Modifier.isFinal(type.getModifiers()))
+						.as("%s 는 final 이면 안 된다", type.getSimpleName())
+						.isFalse();
+			}
+		}
+
+		@Test
+		@DisplayName("getter 가 오버라이드 가능하다 — 원본 Java getter 와 같다")
+		void gettersAreOverridable() throws Exception {
+			assertThat(java.lang.reflect.Modifier.isFinal(
+					AccessTokenResponse.class.getMethod("getAccessToken").getModifiers())).isFalse();
+			assertThat(java.lang.reflect.Modifier.isFinal(
+					LoginResponse.class.getMethod("getRefreshToken").getModifiers())).isFalse();
+			assertThat(java.lang.reflect.Modifier.isFinal(
+					TokenResponse.class.getMethod("getAccessToken").getModifiers())).isFalse();
+			assertThat(java.lang.reflect.Modifier.isFinal(
+					SignupResponse.class.getMethod("getMemberId").getModifiers())).isFalse();
+			assertThat(java.lang.reflect.Modifier.isFinal(
+					EmailVerificationResponse.class.getMethod("getExpiresAt").getModifiers())).isFalse();
+			assertThat(java.lang.reflect.Modifier.isFinal(
+					EmailVerificationConfirmResponse.class.getMethod("getEmail").getModifiers())).isFalse();
+		}
+
+		@Test
+		@DisplayName("정적 팩토리가 Java 에서 그대로 호출된다 — @JvmStatic 유지")
+		void staticFactoriesStillCallable() {
+			// 이 호출들이 컴파일된다는 사실 자체가 `.Companion.` 없이 호출 가능하다는 증거다.
+			assertThat(AccessTokenResponse.of("at").getAccessToken()).isEqualTo("at");
+			assertThat(LoginResponse.of("at", "rt").getRefreshToken()).isEqualTo("rt");
+			assertThat(TokenResponse.of("at", "rt").getAccessToken()).isEqualTo("at");
+			assertThat(java.util.Arrays.stream(SignupResponse.class.getMethods())
+					.anyMatch(m -> m.getName().equals("from") && java.lang.reflect.Modifier.isStatic(m.getModifiers())))
+					.isTrue();
+		}
+
+		@Test
+		@DisplayName("생성자 표면이 원본과 같다 — private 생성자 4개는 여전히 public 이 아니다")
+		void constructorVisibilityUnchanged() {
+			// 원본은 private 생성자 + 정적 팩토리만 공개했다. synthetic 접근자는 세지 않는다.
+			assertThat(publicConstructorCount(AccessTokenResponse.class)).isZero();
+			assertThat(publicConstructorCount(LoginResponse.class)).isZero();
+			assertThat(publicConstructorCount(TokenResponse.class)).isZero();
+			assertThat(publicConstructorCount(SignupResponse.class)).isZero();
+			// 이 둘은 원본도 public 생성자였다.
+			assertThat(publicConstructorCount(EmailVerificationResponse.class)).isEqualTo(1);
+			assertThat(publicConstructorCount(EmailVerificationConfirmResponse.class)).isEqualTo(1);
+		}
+	}
+
+	@Test
+	@DisplayName("요청·응답 DTO 어디에도 public setter 가 생기지 않았다 (var 전환 금지 고정)")
+	void noPublicSettersAnywhere() {
+		java.util.List<Class<?>> all = new java.util.ArrayList<>(java.util.Arrays.asList(restoredTypes()));
+		all.addAll(java.util.Arrays.asList(responseTypes()));
+		all.add(OAuthLoginRequest.class);
+		for (Class<?> type : all) {
+			assertThat(java.util.Arrays.stream(type.getMethods())
+					.filter(m -> m.getName().startsWith("set") && m.getParameterCount() == 1)
+					.map(java.lang.reflect.Method::getName))
+					.as("%s 에 public setter 가 생기면 원본에 없던 표면이 추가된 것이다", type.getSimpleName())
+					.isEmpty();
+		}
+	}
+
+	/** 이번 PR 에서 클래스·getter finality 를 복원한 응답 DTO 6개. */
+	private static Class<?>[] responseTypes() {
+		return new Class<?>[] {
+				AccessTokenResponse.class, LoginResponse.class, TokenResponse.class,
+				SignupResponse.class, EmailVerificationResponse.class, EmailVerificationConfirmResponse.class,
+		};
+	}
+
 	/** 이번 PR 에서 protected 무인자 생성자를 복원한 요청 DTO 6개. */
 	private static Class<?>[] restoredTypes() {
 		return new Class<?>[] {
