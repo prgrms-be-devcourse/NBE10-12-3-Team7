@@ -18,15 +18,15 @@ class AdminCommentService(
     /**
      * 댓글 소프트 삭제 (관리자는 작성자가 아니어도 삭제 가능).
      *
-     * Optional 은 repository 시그니처를 그대로 유지한 결과다. 전환 마지막 단계에서
-     * repository 와 함께 Comment? 로 바꾼다(지금 바꾸면 변경 범위가 넓어져 원인 추적이 어렵다).
+     * `Optional.orElseThrow { }` 대신 엘비스(`?:`)를 쓴다. admin 패키지가 전부 Kotlin 이 된
+     * 뒤에야 repository 반환 타입을 `Comment?` 로 바꿀 수 있었다 — Java 호출부가 남아 있으면
+     * `Optional` 이 사라지는 순간 그쪽이 깨진다.
      */
     @Transactional
     fun deleteComment(commentId: Long) {
         val comment =
-            adminCommentRepository
-                .findByIdAndDeletedAtIsNull(commentId)
-                .orElseThrow { BusinessException(ErrorCode.COMMENT_NOT_FOUND) }
+            adminCommentRepository.findByIdAndDeletedAtIsNull(commentId)
+                ?: throw BusinessException(ErrorCode.COMMENT_NOT_FOUND)
         comment.softDelete()
     }
 }
