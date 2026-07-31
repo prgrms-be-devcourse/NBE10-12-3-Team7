@@ -17,8 +17,11 @@ import java.time.LocalDateTime
  * `abstract class` 라서 Kotlin 기본 final 규칙에 걸리지 않는다 —
  * 아직 Java 인 엔티티 18개가 그대로 `extends BaseTimeEntity` 할 수 있다.
  *
- * 어노테이션에 `@field:` 를 명시하는 이유: JPA 는 이 계층에서 필드 접근(field access)을 쓰므로
- * 어노테이션이 필드에 붙어야 `updatable = false` 같은 설정이 유효하다.
+ * 어노테이션에 `@field:` 를 명시한 이유는 "없으면 동작하지 않아서"가 아니다 —
+ * JPA·Spring Data 어노테이션은 `@Target` 에 PARAMETER 가 없어 생략해도 필드에 붙는다.
+ * 다만 검증(`@NotBlank`)·Jackson(`@JsonProperty`) 어노테이션은 PARAMETER 를 허용해 파라미터가
+ * 우선 선택되므로, **엔티티·DTO 전체를 `@field:` 로 통일**해 어노테이션별로 판단하지 않게 한다.
+ * 이 파일은 팀원이 참고할 기준 코드이므로 규칙을 그대로 보여준다.
  *
  * setter 가 `private` 이 아니라 `protected` 인 이유: build.gradle 의 `allOpen` 이
  * `@MappedSuperclass`/`@Entity` 를 open 으로 만들면서 **프로퍼티도 open** 이 된다.

@@ -73,7 +73,16 @@ Java → Kotlin 전환을 도메인 단위로 진행한다. 전환된 파일은 
 ### 전환 시 규칙
 
 - **엔티티에 `data class` 금지** — `equals`/`hashCode` 가 지연 로딩을 건드리고 JPA 동일성과 어긋난다. 항상 `class`.
-- **주 생성자의 JPA 어노테이션은 `@field:`** — 생략하면 생성자 파라미터에 붙어 **JPA 가 매핑을 무시**한다.
+- **주 생성자에는 `@field:` 를 기본으로 붙인다.** Kotlin 은 use-site target 을 생략하면
+  `param → property → field` 중 **그 어노테이션의 `@Target` 이 허용하는** 첫 자리를 고른다.
+  - JPA(`@Column` `@Id` `@ManyToOne` 등)는 `@Target` 이 `{METHOD, FIELD}` 로 **PARAMETER 를 허용하지 않아
+    `@field:` 없이도 필드에 붙는다.** 붙여도 무해하다.
+  - ⚠️ **위험한 쪽은 검증·Jackson 어노테이션이다.** `@NotBlank` `@NotNull` `@Size` `@JsonProperty` 는
+    `@Target` 에 PARAMETER 가 있어 **생성자 파라미터가 우선 선택**된다. 검증은 필드/getter 를 읽으므로
+    DTO 를 `data class` 로 옮길 때 `@field:NotBlank` 로 명시하지 않으면 **검증이 걸리지 않을 수 있다.**
+    (현재 검증 어노테이션 58곳 / 22파일 — 첫 DTO 전환 시 "빈 문자열 → 400" 테스트로 확인할 것)
+  - 어노테이션마다 `@Target` 을 찾아보지 않아도 되도록 **엔티티·DTO 주 생성자는 `@field:` 로 통일**한다.
+- **값을 주입받는 어노테이션은 `@param:`** — `@Value` 는 PARAMETER 를 허용하며 생성자 주입에서는 그게 맞다.
 - **엔티티 프로퍼티는 `private set` 대신 `protected set`** — allOpen 이 프로퍼티도 open 으로 만들어
   Kotlin 이 open 프로퍼티의 private setter 를 금지한다(컴파일 에러).
 - **Java 에서 호출되는 팩토리에 `@JvmStatic`**, 기본 인자가 있는 생성자/함수에 **`@JvmOverloads`**.

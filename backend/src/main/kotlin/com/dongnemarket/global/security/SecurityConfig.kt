@@ -26,8 +26,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
  *
  * `@Value` 에 `@param:` 을 명시한 이유: 생성자 프로퍼티(`val`)에 붙은 어노테이션은
  * 현재 파라미터에만 적용되지만, Kotlin 2.2 는 "향후 필드에도 적용될 예정"이라고 경고한다.
- * 생성자 주입에서 원하는 대상은 파라미터이므로 명시해 의도를 고정한다
- * — JPA 어노테이션이 `@field:` 를 필요로 하는 것과 정반대 경우다.
+ * 생성자 주입에서 원하는 대상은 파라미터이므로 명시해 의도를 고정한다.
+ *
+ * `@Value` 는 `@Target` 에 PARAMETER 가 있어 생략해도 파라미터가 선택된다(원하는 동작).
+ * 반대로 검증·Jackson 어노테이션은 PARAMETER 가 있는 게 문제가 되어 `@field:` 로 눌러야 한다.
  */
 @Configuration
 class SecurityConfig(
