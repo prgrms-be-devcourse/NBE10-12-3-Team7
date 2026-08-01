@@ -1,5 +1,5 @@
 # 온프레미스(로컬 전체 컨테이너) 배포. nginx·Next·Spring Boot·MySQL·Redis를 한 호스트에 자기완결로 올린다.
-# 클라우드(infra/cloud/)와 달리 이미지를 로컬에서 빌드하고, DB도 같은 스택의 MySQL 컨테이너를 쓴다.
+# AWS 미러(infra/cloud-terraform/, 코드 전용)와 달리 실제 배포·운영하는 스택 — 이미지 로컬 빌드, DB도 같은 스택 MySQL.
 # 앱은 prod 프로파일 + FILE_STORAGE_TYPE=local(기본). 클라우드와의 차이는 프로파일이 아니라 env·이미지 출처뿐.
 # (설계·경계: ../infra.md)
 #
