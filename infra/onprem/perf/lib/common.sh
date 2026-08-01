@@ -35,7 +35,7 @@ MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-$(env_get MYSQL_ROOT_PASSWORD)}"
 # 인자로 받은 SQL 한 줄을 실행하고 결과를 탭 구분으로 돌려준다(헤더 없음).
 mysql_q() {
   docker exec -i "$MYSQL_CONTAINER" \
-    mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B "$MYSQL_DB" -e "$1" 2>/dev/null
+    mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --default-character-set=utf8mb4 -N -B "$MYSQL_DB" -e "$1" 2>/dev/null
 }
 
 # SQL 파일을 통째로 실행한다. 실패하면 즉시 멈춘다.
@@ -43,7 +43,7 @@ mysql_file() {
   local f="$1"
   [ -f "$f" ] || { echo "✗ SQL 파일 없음: $f" >&2; return 1; }
   docker exec -i "$MYSQL_CONTAINER" \
-    mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DB" < "$f"
+    mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --default-character-set=utf8mb4 "$MYSQL_DB" < "$f"
 }
 
 # ── 관측 ─────────────────────────────────────────────────────────────────────
