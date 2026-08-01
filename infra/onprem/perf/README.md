@@ -31,7 +31,7 @@ BASE_URL=http://192.168.0.10 MYSQL_CONTAINER=other-mysql ./scenarios/...
 | `dataset/10-products.sql` | 볼륨 상품 적재. `@add_rows` 만 바꿔 계단마다 재실행(누적) |
 | `dataset/90-verify.sql` | 적재 후 건수·크기·분포 검증 |
 | `dataset/99-cleanup.sql` | 마커(`[perf]`)가 붙은 볼륨 데이터만 삭제 |
-| `scenarios/snapshot.sh` | 현재 상태를 재서 `results/` 에 남긴다 |
+| `scenarios/snapshot.sh` | 화면 기준 프로브 8종을 재서 `results/` 에 남긴다 |
 | `results/TEMPLATE-manual.md` | 화면 클릭 실측 템플릿. 실행 폴더에 복사해 쓴다 |
 | `probe/` | k6 프로브. **아직 비어 있다** |
 
@@ -67,16 +67,39 @@ bash -c 'source lib/common.sh; require_stack; echo "DB $(db_size_mib) MiB / 히�
 
 ### 프로브
 
-성격이 다른 세 쿼리를 **같이** 잰다. 하나만 재면 "느려졌다"로 끝나지만, 셋을 같이 재면
-"인덱스를 타는 쿼리는 멀쩡한데 LIKE 검색만 무너졌다"가 나온다.
+**사람이 화면에서 실제로 부르는 API만 잰다.** 백엔드에 있어도 어떤 화면도 호출하지 않는
+엔드포인트는 재지 않는다 — 한때 `/api/categories/{id}/products` 를 재고 "느려졌다"고
+판단했는데, 프론트를 뒤져보니 그 경로를 부르는 화면이 없었다. 아무도 겪지 않는 지연이었다.
 
-| 대상 | 쿼리 특성 |
-|---|---|
-| 상품 목록 (커서) | PK 정렬. 인덱스를 탄다 |
-| 상품 검색 | `lower(title) LIKE '%kw%'` — **선행 와일드카드라 인덱스가 무용지물**. 주인공 |
-| 카테고리별 목록 | FK 인덱스 |
+**관리자도 사람이다.** 오히려 관리자 화면이 볼륨에 더 취약하다 — 일반 사용자 화면은 커서
+페이징으로 30건씩 보지만, 관리자 화면은 목록을 통째로 반환한다(컨트롤러 8개 전부 페이징 없음).
 
-프로브는 **재는 도구지 괴롭히는 도구가 아니다.** VU 5 수준으로 낮게 고정한다.
+| 프로브 | 화면 동작 | API |
+|---|---|---|
+| `list_first` | 상품 목록 첫 진입 | `GET /api/products?size=30` |
+| `list_region` | 동네 설정된 사용자의 목록 | `GET /api/products?size=30&regionCodes=..` |
+| `list_deep` | 스크롤을 한참 내린 상태 | `GET /api/products?size=30&cursor=..` |
+| `detail_hot` | 인기 상품 클릭 | `GET /api/products/{id}` (조회수 UPDATE 포함) |
+| `comments` | 상세 진입 시 동시 호출 | `GET /api/products/{id}/comments` |
+| `admin_products` | 관리자 상품 목록 | `GET /api/admin/products` (인증) |
+| `admin_members` | 관리자 회원 목록 | `GET /api/admin/members` (인증) |
+| `admin_dashboard` | 관리자 대시보드 집계 | `GET /api/admin/dashboard` (인증) |
+
+**재지 않는 것** — 카테고리 탭과 검색창은 서버를 부르지 않는다. 이미 받아온 배열을
+클라이언트에서 거른다(`products/page.tsx`). `/api/categories`(8건)와 `/api/regions`(5,338건)는
+고정 크기라 볼륨과 무관하다.
+
+**무엇을 프로브에 넣을지 판별하는 기준** — 화면이 호출하면서 아래 중 하나에 걸리면 넣는다.
+
+1. 페이징이 없는가 (행 수에 비례해 응답이 커진다)
+2. 목록·검색을 반환하는가
+3. 조인이 많은가 (N+1 위험)
+4. 집계(COUNT·SUM)를 하는가
+
+관리자 프로브는 **맨 뒤에서** 돈다. 상품 목록 응답이 수십 MB라 버퍼풀을 휩쓸어 앞선 측정에
+영향을 주기 때문이다. 샘플 수도 3회로 줄인다(느리고 편차가 작다).
+
+프로브는 **재는 도구지 괴롭히는 도구가 아니다.** 동시성을 올리지 않는다.
 
 ### 판정 기준
 

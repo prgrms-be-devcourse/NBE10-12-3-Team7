@@ -19,18 +19,48 @@ SAMPLES="${SAMPLES:-7}"   # 홀수로 두면 중앙값이 실제 관측치가 �
 mkdir -p "$RUN_DIR"
 require_stack
 
-# 측정 대상. 성격이 다른 것을 같이 재야 "무엇이 볼륨에 취약한가"가 갈린다.
-#   목록      커서 페이징. PK 정렬이라 인덱스를 탄다
-#   검색      lower(title) LIKE '%키워드%' — 선행 와일드카드라 인덱스가 무용지물
-#   카테고리  페이징이 없어 해당 카테고리 상품을 통째로 반환한다
-#   검색(흔함) 거의 모든 상품이 매칭돼 30건을 찾는 즉시 스캔이 끝난다 — 실제 사용자 패턴에 가깝다
-#   검색(희귀) 매칭 0건이라 전체를 끝까지 훑는다 — LIKE 풀스캔의 진짜 최악
-declare -a NAMES=(list search_common search_rare category)
+# 측정 대상 — **사용자가 화면에서 실제로 부르는 API만** 잰다.
+# 백엔드에 존재해도 프론트가 호출하지 않는 엔드포인트는 재지 않는다. 한때
+# /api/categories/{id}/products 를 재고 "카테고리 목록이 느리다"고 판단했는데,
+# 프론트를 뒤져보니 그 경로를 부르는 화면이 없었다 — 아무도 겪지 않는 지연이었다.
+#
+# 화면 → API 대응 (frontend/src/app 기준)
+#   상품 목록 진입      GET /api/products?size=30              (+ 동네 설정 시 regionCodes)
+#   목록 스크롤         GET /api/products?size=30&cursor=...
+#   상품 상세 클릭      GET /api/products/{id}                 (조회수 UPDATE 포함)
+#   상세 진입 시 동시   GET /api/products/{id}/comments
+#
+# 카테고리 탭과 검색창은 서버를 부르지 않는다 — 이미 받아온 배열을 클라이언트에서 거른다
+# (products/page.tsx). 그래서 프로브에 넣지 않는다.
+#
+# ID·지역코드는 데이터에 따라 달라지므로 env로 덮어쓸 수 있게 둔다.
+PROBE_REGION="${PROBE_REGION:-1111010300}"   # 상품이 가장 많은 동네
+PROBE_HOT_ID="${PROBE_HOT_ID:-6108}"         # 조회수 최상위 — 같은 row UPDATE 경합 구간
+PROBE_ID="${PROBE_ID:-134}"                  # 일반 상품
+PROBE_CURSOR="${PROBE_CURSOR:-26516}"        # 스크롤을 한참 내린 상태
+
+declare -a NAMES=(list_first list_region list_deep detail_hot comments)
 declare -a PATHS=(
-  "/api/products"
-  "/api/products?keyword=%EC%A4%91%EA%B3%A0"
-  "/api/products?keyword=zzznothing"
-  "/api/categories/1/products"
+  "/api/products?size=30"
+  "/api/products?size=30&regionCodes=$PROBE_REGION"
+  "/api/products?size=30&cursor=$PROBE_CURSOR"
+  "/api/products/$PROBE_HOT_ID"
+  "/api/products/$PROBE_ID/comments"
+)
+
+# 관리자 화면. 관리자도 사람이고 매일 그 화면을 쓴다 — 오히려 사용자 화면보다 볼륨에 취약하다.
+# 관리자 컨트롤러 8개가 전부 페이징이 없어 목록을 통째로 반환한다.
+# 무거워서 샘플을 줄이고, 순서상 **맨 뒤**에 둔다 — 81 MB 응답이 버퍼풀을 휩쓸어
+# 앞선 측정에 영향을 주지 않게 하기 위해서다.
+ADMIN_SAMPLES="${ADMIN_SAMPLES:-3}"
+ADMIN_EMAIL="${ADMIN_EMAIL:-admin@dongnemarket.com}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin1234!}"
+
+declare -a ADMIN_NAMES=(admin_products admin_members admin_dashboard)
+declare -a ADMIN_PATHS=(
+  "/api/admin/products"
+  "/api/admin/members"
+  "/api/admin/dashboard"
 )
 
 # 응답시간 N회를 재고 중앙값을 돌려준다(ms). 첫 회는 워밍업으로 버린다 —
@@ -40,10 +70,10 @@ declare -a PATHS=(
 # 기본 10초당 60건(초당 6건)이라, 다른 트래픽을 동시에 흘리면 측정이 429로 오염된다.
 measure() {
   local path="$1" i t code
-  curl -s -o /dev/null "$BASE_URL$path" || true          # 워밍업
+  curl -s -o /dev/null ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$BASE_URL$path" || true   # 워밍업
   local times=()
   for ((i = 0; i < SAMPLES; i++)); do
-    read -r t code <<< "$(curl -s -o /dev/null -w '%{time_total} %{http_code}' "$BASE_URL$path")"
+    read -r t code <<< "$(curl -s -o /dev/null -w '%{time_total} %{http_code}' ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$BASE_URL$path")"
     if [ "$code" != "200" ]; then
       echo "✗ $path 가 HTTP $code — 측정 중단. 동시에 도는 트래픽이 있는지 확인할 것" >&2
       exit 1
@@ -76,6 +106,29 @@ for i in "${!NAMES[@]}"; do
   [ -n "$ep_json" ] && ep_json="$ep_json,"
   ep_json="$ep_json\"${NAMES[$i]}\":{\"path\":\"${PATHS[$i]}\",\"median_ms\":$med,\"min_ms\":$min,\"max_ms\":$max}"
 done
+
+# ── 관리자 화면 ──────────────────────────────────────────────────────────────
+token="$(curl -s -X POST "$BASE_URL/api/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" \
+  | python3 -c 'import sys,json
+try: print(json.load(sys.stdin)["data"]["accessToken"])
+except Exception: print("")')"
+
+if [ -z "$token" ]; then
+  echo "✗ 관리자 로그인 실패 — ADMIN_EMAIL/ADMIN_PASSWORD 확인" >&2
+  exit 1
+fi
+
+AUTH_HEADER="Authorization: Bearer $token"
+SAVED_SAMPLES=$SAMPLES
+SAMPLES=$ADMIN_SAMPLES
+for i in "${!ADMIN_NAMES[@]}"; do
+  read -r med min max <<< "$(measure "${ADMIN_PATHS[$i]}")"
+  note "$(printf '%-16s 중앙 %8s ms   (최소 %s / 최대 %s)' "${ADMIN_NAMES[$i]}" "$med" "$min" "$max")"
+  ep_json="$ep_json,\"${ADMIN_NAMES[$i]}\":{\"path\":\"${ADMIN_PATHS[$i]}\",\"median_ms\":$med,\"min_ms\":$min,\"max_ms\":$max,\"auth\":true}"
+done
+SAMPLES=$SAVED_SAMPLES
+unset AUTH_HEADER
 
 cat > "$OUT" <<JSON
 {
