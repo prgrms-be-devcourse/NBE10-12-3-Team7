@@ -22,7 +22,8 @@ resource "aws_ecs_task_definition" "app" {
         { name = "FILE_STORAGE_TYPE", value = "s3" },
         { name = "AWS_S3_BUCKET", value = aws_s3_bucket.images.bucket },
         { name = "AWS_REGION", value = var.aws_region },
-        # OLLAMA_BASE_URL 은 Step 6(Ollama EC2) 생성 후 추가한다.
+        { name = "OLLAMA_BASE_URL", value = "http://${aws_instance.ollama.private_ip}:11434" },
+        { name = "OLLAMA_MODEL", value = var.ollama_model },
       ]
       # 민감값 = secrets (평문 노출 없이 Secrets Manager에서 주입)
       secrets = [

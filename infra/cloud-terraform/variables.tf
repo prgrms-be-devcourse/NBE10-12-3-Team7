@@ -28,3 +28,15 @@ variable "db_username" {
   type        = string
   default     = "marketon"
 }
+
+variable "ollama_model" {
+  description = "관리자 AI 모델. 온프레미스와 통일."
+  type        = string
+  default     = "qwen3:1.7b"
+}
+
+variable "domain_name" {
+  description = "서비스 도메인. Route53·ACM 대상."
+  type        = string
+  default     = "marketon.inyeon.io"
+}

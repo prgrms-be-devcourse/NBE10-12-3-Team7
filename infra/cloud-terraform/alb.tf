@@ -7,7 +7,13 @@ resource "aws_security_group" "alb" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # HTTPS(443)는 dns 단계에서 추가
+    cidr_blocks = ["0.0.0.0/0"] # 80은 443으로 리다이렉트
+  }
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
   egress {
     from_port   = 0
@@ -67,18 +73,23 @@ resource "aws_lb_target_group" "next" {
   }
 }
 
-# ── 리스너(80): 기본은 next, /api/* 만 app으로 분기. ──
+# ── 리스너(80): 평문을 443으로 리다이렉트(라우팅은 443이 담당). ──
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.next.arn # / → next
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
   }
 }
+# /api/* → app (443 리스너에 붙는다)
 resource "aws_lb_listener_rule" "api" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = aws_lb_listener.https.arn
   priority     = 100
   action {
     type             = "forward"

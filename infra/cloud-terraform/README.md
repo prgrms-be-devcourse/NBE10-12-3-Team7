@@ -26,23 +26,27 @@
 - **OpenTofu** (Terraform의 오픈소스 포크). 명령은 `tofu <sub>` (예: `tofu init`, `tofu plan`).
 - 설치(Windows): `winget install --id <조회한 패키지 id> -e`
 
-## 다음 세션 시작점
+## 진행 상태 — 전체 완료 (코드 전용, apply 안 함)
 
 - [x] **Step 0** 스캐폴드 — `versions.tf` · `providers.tf` · `variables.tf`
 - [x] **Step 1** network — VPC · subnet(public/private ×2) · IGW · route (NAT 없이 IGW egress)
 - [x] **Step 2** data — RDS MySQL · ElastiCache Redis · SG 3종(app만 접근)
 - [x] **Step 3** registry/storage/secrets — ECR ×2 · S3(퍼블릭 차단) · Secrets Manager
-- [ ] **Step 4** ecs (Fargate app·next) — cluster · IAM · logs · task def  ← **여기부터**
-- [ ] **Step 5** alb (+ACM) · ecs service
-- [ ] **Step 6** ec2 (Ollama·모니터링)
-- [ ] **Step 7** dns (Route53)
+- [x] **Step 4** ecs — cluster · IAM(실행/태스크) · logs · task def(app·next)
+- [x] **Step 5** alb · ecs service — ALB·타깃그룹·리스너, 서비스 2개(퍼블릭+공인IP)
+- [x] **Step 6** ec2(Ollama qwen3:1.7b) · **CloudWatch 관리형 모니터링**(대시보드·알람·SNS)
+- [x] **Step 7** dns — Route53 · ACM(DNS 검증) · HTTPS(443, 80→443 리다이렉트)
 
-재개 명령:
+**최종 `plan`: 58 resources to add, 0 destroy** (전 단계 `validate` 통과).
+
+재개/검증 명령:
 
 ```bash
 cd infra/cloud-terraform
-tofu init && tofu validate && tofu plan   # 현재 plan: 21 to add
+tofu init && tofu validate && tofu plan   # 58 to add
 ```
+
+> 실 운영 전환 시: `versions.tf`에 `backend "s3"` 추가 + `tofu apply`. 도메인은 `route53_nameservers` 출력값을 상위 등록기관에 위임 등록해야 해석됨.
 
 ## 함정 기록
 
