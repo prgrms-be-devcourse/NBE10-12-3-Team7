@@ -1417,7 +1417,9 @@ null 경로를 복원하는 과정에서 `confirmVerification` 이 여전히 원
 | `MemberSocialAccountRepository` | `findByProviderAndProviderUserIdFetchMember` | `OAuthProvider`·`String` | 둘 다 non-null | 둘 다 nullable 복원 |
 | `RefreshTokenJpaEntityRepository` | `findByMemberId`·`deleteByMemberId` | `Long` | `Long?` | 이미 정상 |
 | `JpaRefreshTokenRepository` | `findByMemberId`·`deleteByMemberId` | `Long` | `Long?` | 이미 정상 |
-| `JpaRefreshTokenRepository` | `save` | `RefreshToken` | non-null | **미조치** — 3단계 `RefreshTokenRepository` 추상화가 non-null 이라 함께 고쳐야 한다 |
+| `RefreshTokenRepository`(3단계) | `save` | `RefreshToken` | non-null | `RefreshToken?` 복원 |
+| `JpaRefreshTokenRepository` | `save` | `RefreshToken` | non-null | `RefreshToken?` 복원 |
+| `RedisRefreshTokenRepository`(3단계) | `save` | `RefreshToken` | non-null | `RefreshToken?` 복원 |
 
 복원 후 `confirmVerification(null)` 의 호출 순서가 원본과 같아졌다:
 `existsByEmailAndVerifiedTrue(null)`(읽기) → `findCode(null)` → NPE.
@@ -1440,3 +1442,27 @@ test 프로파일에서는 그 앞에서 이미 실패해 도달하지 않는다
 | `test` | 839 / 실패 0 / skip 0 | **852 / 실패 0 / skip 0** (+13) |
 | auth | 293 | **306** (+13) |
 | `integrationTest` | 44 실행 / 43 통과 / 비활성화 1 | **동일** |
+
+### `RefreshTokenRepository.save` — 전수 점검의 마지막 축소
+
+repository 전수 점검에서 마지막으로 `save(RefreshToken)` 이 non-null 로 좁혀져 있는 것을 발견했다.
+추상화 1개와 구현 2개(JPA·Redis)를 **함께** 복원해야 해서 3단계 파일까지 범위에 들어왔다.
+
+**JVM descriptor 는 바뀌지 않는다** — 셋 다 `(Lcom/dongnemarket/auth/entity/RefreshToken;)L…RefreshToken;` 그대로다.
+복원한 것은 **Kotlin 호출 계약과 메서드 진입 null 검사**뿐이다.
+
+원본의 null 실패 지점을 그대로 맞췄다. Java 는 수신자를 먼저 평가한 뒤 인자를 평가한다.
+
+| 구현 | 실패 전 호출 | 첫 역참조 | 외부 저장소 쓰기 |
+|---|---|---|---|
+| `JpaRefreshTokenRepository` | 없음(`jpaRepository` 는 필드) | `refreshToken.getMemberId()` → NPE | `findByMemberId`·`save` **미호출** |
+| `RedisRefreshTokenRepository` | `opsForValue()` 1회(수신자 평가) | `key(refreshToken.getMemberId())` → NPE | `set` **미호출** |
+
+non-null 로 조여 두면 메서드 진입 null 검사가 먼저 걸려 **Redis 쪽의 `opsForValue()` 호출조차 사라진다.**
+그래서 nullable 파라미터 + 첫 역참조 위치 `!!` 조합으로 맞췄다. **두 구현 모두 null 입력 시 외부 저장소에
+쓰기 전에 실패한다.**
+
+`AuthRepositoryNullabilityContractTest`(추상화·구현체 nullability + `!!` 없는 호출 fixture + descriptor·오버로드)와
+`RefreshTokenSaveNullContractTest`(null 입력 시 interaction, 정상 저장 경로)가 이를 고정한다.
+
+이 수정은 5단계 기능 확장이 아니라 **2·3단계에서 발견되지 않았던 Kotlin nullability 호환성 수정**이다.

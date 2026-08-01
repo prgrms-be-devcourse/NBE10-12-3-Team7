@@ -1,6 +1,7 @@
 package com.dongnemarket.auth.repository
 
 import com.dongnemarket.auth.entity.OAuthProvider
+import com.dongnemarket.auth.entity.RefreshToken
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -113,6 +114,46 @@ class AuthRepositoryNullabilityContractTest {
                 RefreshTokenJpaEntityRepository::class.java
                     .getDeclaredMethod("findByMemberId", java.lang.Long::class.java)
             assertThat(method.parameterTypes[0]).isEqualTo(java.lang.Long::class.java)
+        }
+    }
+
+    @Nested
+    @DisplayName("RefreshToken save — 추상화와 구현 2개")
+    inner class RefreshTokenSaveContract {
+        @Test
+        fun `추상화와 구현체 모두 save 파라미터가 nullable 이다`() {
+            assertThat(isNullableParam(RefreshTokenRepository::class, "save", 0)).isTrue()
+            assertThat(isNullableParam(JpaRefreshTokenRepository::class, "save", 0)).isTrue()
+            assertThat(isNullableParam(RedisRefreshTokenRepository::class, "save", 0)).isTrue()
+        }
+
+        /** 파라미터가 다시 조여지면 이 호출들이 컴파일되지 않는다. */
+        @Test
+        fun `nullable 값을 인위적인 bang 없이 전달할 수 있다`() {
+            val nullToken: RefreshToken? = null
+            val abstraction = mock(RefreshTokenRepository::class.java)
+            val jpa = mock(JpaRefreshTokenRepository::class.java)
+            val redis = mock(RedisRefreshTokenRepository::class.java)
+
+            abstraction.save(nullToken)
+            jpa.save(nullToken)
+            redis.save(nullToken)
+
+            assertThat(abstraction).isNotNull()
+        }
+
+        @Test
+        fun `save 의 JVM descriptor 와 오버로드 수가 유지된다`() {
+            for (type in listOf(
+                RefreshTokenRepository::class.java,
+                JpaRefreshTokenRepository::class.java,
+                RedisRefreshTokenRepository::class.java,
+            )) {
+                val saves = type.declaredMethods.filter { it.name == "save" && !it.isSynthetic && !it.isBridge }
+                assertThat(saves).describedAs("%s 의 save", type.simpleName).hasSize(1)
+                assertThat(saves[0].parameterTypes[0]).isEqualTo(RefreshToken::class.java)
+                assertThat(saves[0].returnType).isEqualTo(RefreshToken::class.java)
+            }
         }
     }
 

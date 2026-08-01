@@ -30,9 +30,9 @@ class RedisRefreshTokenRepository(
         return Optional.of(RefreshToken.issue(memberId, token, expiresAtFromTtl(key)))
     }
 
-    override fun save(refreshToken: RefreshToken): RefreshToken {
+    override fun save(refreshToken: RefreshToken?): RefreshToken {
         redisTemplate.opsForValue().set(
-            key(refreshToken.memberId),
+            key(refreshToken!!.memberId),
             refreshToken.token!!,
             Duration.ofSeconds(refreshTokenValiditySeconds),
         )
