@@ -59,6 +59,9 @@ Controller → Service → Repository → Entity/DTO
 Java → Kotlin 전환을 도메인 단위로 진행한다. 전환된 파일은 `src/main/kotlin`, 남은 파일은
 `src/main/java` — 두 소스셋을 함께 컴파일하므로 **한 파일씩 옮길 수 있다.**
 
+실제 변환 사례, 실패 원인과 검증 방법은
+[Auth Java → Kotlin 마이그레이션 기록](docs/kotlin-migration/auth-migration-notes.md)에 누적한다.
+
 ### 빌드 설정 (팀장만 수정)
 
 `build.gradle` 의 Kotlin 플러그인은 전부 "Kotlin 클래스가 기본 `final`"이라 생기는 문제를 푸는 장치다.
@@ -89,8 +92,34 @@ Java → Kotlin 전환을 도메인 단위로 진행한다. 전환된 파일은 
   없으면 Java 호출부가 깨진다(`Foo.Companion.bar()` / 인자 적은 호출 불가).
 - **공개 API 의 nullability 를 임의로 조이지 않는다.** non-null `Long` 은 primitive `long` 이 되어
   아직 Java 인 호출부에서 **자동 언박싱 NPE** 를 낸다. 원본 시그니처를 그대로 옮기고, 전환 완료 후 별도 패스에서 조인다.
-- `record` → `data class` 는 **접근자 이름이 바뀐다**(`productId()` → `getProductId()`).
+- **Java `record` 는 `@JvmRecord data class` 로 옮긴다.** 그냥 `data class` 로 바꾸면 **접근자 이름이
+  바뀌어**(`productId()` → `getProductId()`) 아직 Java 인 호출부가 전부 깨진다. `@JvmRecord` 를 붙이면
+  JVM 상에서도 진짜 record 라 `productId()` 가 그대로 유지된다(호출부를 기계적으로 고치지 않아도 된다).
   깨진 호출부는 grep 말고 `./gradlew compileJava` 로 찾는다.
+- **`equals`/`hashCode` 가 없던 일반 DTO 는 `data class` 로 바꾸지 않는다.** 값 기반 동등성·`copy`·
+  `componentN` 이 새로 생겨 **기존에 없던 동작이 추가**된다. 일반 `class` 로 옮긴다.
+- **boolean getter 이름은 `@get:JvmName` 으로 유지한다.** Kotlin 은 `val autoLogin` 을 `getAutoLogin()`
+  으로 만들지만 Java 호출부는 `isAutoLogin()` 을 쓴다. 프로퍼티 이름을 `isAutoLogin` 으로 바꾸는 우회는
+  **쓰지 않는다** — JSON 필드명까지 `isAutoLogin` 으로 바뀐다.
+- **직렬화되는 프로퍼티에 `@get:JvmName` 을 쓰면 `@get:JsonProperty` 도 함께 붙인다.** getter 이름을
+  바꾸면 jackson-module-kotlin 이 정하는 JSON 필드명이 원본과 달라진다(실제로 응답 필드가 사라져 테스트가 깨졌다).
+- **계약은 셋이고, 서로 자동으로 따라오지 않는다.** DTO 를 옮길 때 아래 셋을 **각각** 검증한다.
+
+  | 계약 | 정하는 것 | 고정하는 방법 | 깨졌을 때 |
+  |---|---|---|---|
+  | JVM getter 이름 | Java 호출부가 부르는 메서드 | `@get:JvmName` | 컴파일 에러(즉시 드러남) |
+  | Jackson JSON 필드명 | 실제 요청·응답 본문 키 | `@get:JsonProperty` | 응답 필드 소실(기존 테스트로 잡힘) |
+  | **OpenAPI schema** | **프론트가 보고 개발하는 문서** | `@get:JsonProperty` + `@get:Schema` | **런타임은 멀쩡하고 문서만 틀림 — 기존 테스트로 안 잡힘** |
+
+- **`@get:JvmName` 만 붙이면 springdoc 이 `isXxx()` getter 를 별도 프로퍼티로 읽는다.** schema 에
+  `isAutoLogin` 같은 **팬텀 필드**가 생겨 required 로까지 올라가고 정상 필드는 `writeOnly` 로 뒤집힌다.
+  `@get:JsonProperty` 를 함께 붙이면 schema 이름까지 정렬된다.
+- **Kotlin non-null 타입은 springdoc 이 자동으로 `required` 로 올린다.** 원본 Java 의 primitive(`boolean`·`long`)는
+  required 가 아니었으므로, 문서 계약을 그대로 두려면
+  `@get:Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)` 를 명시한다.
+- **OpenAPI 는 `/v3/api-docs` 를 실제로 받아 회귀 테스트로 고정한다.** 어노테이션을 붙였다는 사실만으로
+  끝내지 않는다 — 판단 기준은 생성된 문서다(auth 사례: `AuthOpenApiContractTest`).
+  전체 JSON snapshot 대신 프로퍼티 이름 집합·required·readOnly/writeOnly 만 선별 비교한다.
 
 ### 테스트 전환 시 규칙
 
