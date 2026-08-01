@@ -8,7 +8,7 @@
 
 | 폴더 | 대상 |
 |---|---|
-| `onprem/` | **온프레미스 전체 스택** — nginx · Next · Spring Boot · MySQL 한 호스트, 이미지 로컬 빌드 |
+| `onprem/` | **온프레미스 전체 스택** — nginx · Next · Spring Boot · MySQL 한 호스트, 이미지는 Zot에서 pull |
 | `cloud/app/` | 앱 EC2 — nginx · Next.js · Spring Boot (ECR pull, DB 연결) |
 | `cloud/db/` | DB EC2 — MySQL 8 컨테이너 (관리형 RDS 대신 EC2 직접 호스팅) |
 | `cloud/monitoring/` | 모니터링 EC2 — Prometheus · Loki · Grafana |
@@ -17,8 +17,11 @@
 
 | | onprem | cloud |
 |---|---|---|
-| 이미지 | 배포 호스트에서 로컬 빌드 | ECR로 push → EC2가 pull (자동화는 재설계 중, 아래 CI/CD 참고) |
-| 파일 저장 | `FILE_STORAGE_TYPE=local` | `s3` |
+| 이미지 | Zot(사설 레지스트리)로 push → 스택이 pull | ECR로 push → EC2가 pull (자동화는 재설계 중, 아래 CI/CD 참고) |
+| 파일 저장 | `s3` + RustFS(`FILE_STORAGE_S3_ENDPOINT` 지정) | `s3` + AWS S3(endpoint 미지정) |
+
+`S3Config`는 `file.storage.s3.endpoint` **유무 하나로** 두 지형을 가른다 — 값이 있으면 정적 자격증명 +
+path-style(RustFS/MinIO 계열), 없으면 기존 AWS 기본 자격증명 체인. 프로파일은 양쪽 모두 `prod` 하나다.
 
 Dockerfile은 각 앱 폴더(`backend/`, `frontend/`)에 있으며 **지형 무관 공용**이다.
 
@@ -27,18 +30,22 @@ Dockerfile은 각 앱 폴더(`backend/`, `frontend/`)에 있으며 **지형 무�
 ```bash
 # 각 지형 폴더(onprem/ 또는 cloud/<역할>/)에서:
 cp .env.example .env                    # 값 채우기. .env 는 커밋 금지
-docker compose --env-file .env up -d    # onprem: 로컬 빌드 / cloud: 먼저 pull
+docker compose --env-file .env up -d    # onprem: Zot pull / cloud: ECR pull
 ```
 
 ### 온프레미스 — 프로파일
 
 ```bash
-cd backend && ./gradlew clean build -x test && cd ..   # 앱 이미지용 JAR 선행 빌드(필수)
-
+# JAR 선행 빌드는 불필요하다 — backend/Dockerfile이 멀티스테이지(temurin:21-jdk)로 컨테이너 안에서 빌드한다.
 cd infra/onprem
-docker compose --env-file .env up -d --build                                          # nginx+next+app+mysql
-docker compose --env-file .env --profile observability up -d --build                  # +관측
-docker compose --env-file .env --profile observability --profile edge up -d --build   # +외부노출(퀵터널)
+docker compose --env-file .env up -d zot                                     # ① 레지스트리(ECR 대응) 먼저
+./build-and-push.sh                                                          # ② app/next 빌드 → Zot push
+docker compose --env-file .env up -d                                         # ③ 나머지(app/next는 Zot에서 pull)
+docker compose --env-file .env --profile observability up -d                 # +관측
+docker compose --env-file .env --profile observability --profile edge up -d  # +외부노출(퀵터널)
+
+# 레지스트리 확인
+curl -s localhost:5000/v2/_catalog     # {"repositories":["dongnemarket-app","dongnemarket-next"]}
 ```
 
 접속 지점:
