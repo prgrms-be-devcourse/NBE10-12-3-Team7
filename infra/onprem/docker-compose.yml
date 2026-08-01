@@ -155,6 +155,13 @@ services:
       FILE_STORAGE_S3_ENDPOINT: ${FILE_STORAGE_S3_ENDPOINT:-http://rustfs:9000}
       FILE_STORAGE_S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
       FILE_STORAGE_S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      # 힙을 고정값이 아니라 컨테이너 메모리 제한의 비율로 잡는다(JVM이 cgroup 한도를 읽는다).
+      # 이미지 기본값 -Xmx384m은 어느 호스트에 올려도 안전한 보수적 값이지만, 부하를 주면
+      # 애플리케이션 성능이 아니라 힙 부족을 측정하게 된다. 지형별 여유는 여기서 정한다.
+      JAVA_OPTS: ${APP_JAVA_OPTS:--XX:InitialRAMPercentage=50 -XX:MaxRAMPercentage=75}
+    # 상한을 명시해야 위 비율 계산이 의미를 갖는다. 없으면 JVM이 VM 전체(7.75GiB)를 기준으로
+    # 잡아 mysql·ollama·jenkins와 경쟁한다.
+    mem_limit: ${APP_MEM_LIMIT:-2g}
     volumes:
       - dongne-uploads:/app/uploads     # local 모드로 되돌릴 때만 쓰인다(신고 증빙 + 상품 이미지 공용)
     expose:
