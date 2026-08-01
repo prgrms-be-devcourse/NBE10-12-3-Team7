@@ -42,10 +42,10 @@ class MannerRatingService(
 
         // 그 상품에 대해 이 회원이 구매자로 채팅방을 연 적이 있어야 한다(= 실제 거래 상대라는 근거).
         chatRoomRepository
-            .findByProduct_IdAndBuyer_Id(product.id, raterId)
+            .findByProduct_IdAndBuyer_Id(productId, raterId)
             .orElseThrow { BusinessException(ErrorCode.MANNER_RATING_NOT_A_PARTICIPANT) }
 
-        if (mannerRatingRepository.existsByProduct_IdAndRater_Id(product.id, raterId)) {
+        if (mannerRatingRepository.existsByProduct_IdAndRater_Id(productId, raterId)) {
             throw BusinessException(ErrorCode.MANNER_RATING_ALREADY_EXISTS)
         }
 
