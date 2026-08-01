@@ -1327,3 +1327,72 @@ Redis key·TTL·Lua 원자성은 기존 Testcontainers 통합 테스트가 이�
 없어 실행할 수 없는 외부 연동 절차다. 테스트에는 `test-kakao-client-id` 같은 명백한 dummy 값만 썼다.
 토큰 교환·사용자정보 호출의 실제 HTTP 왕복은 기존 `KakaoOAuthClientTest`·`GoogleOAuthClientTest`(MockWebServer)가
 담당하며, 이번 전환 후에도 그대로 통과한다.
+
+---
+
+# PR E — 지원 서비스·메일 (5단계)
+
+대상 5개: 지원 서비스 4(`LoginAttemptService`·`RefreshTokenService`·`EmailVerificationService`
+·`PasswordResetService`) + mail 구현 1(`SmtpEmailSender`). 기준선은 PR #82 병합본(`0a5af2d`).
+6단계 대상(`AuthService`·`OAuthSignupTransaction`)과 controller 3개는 손대지 않았다.
+
+## 이 계층에서 조용히 깨지는 것
+
+| 무엇이 | 어떻게 | 대응 |
+|---|---|---|
+| 클래스 finality | Kotlin 기본 `final` 이면 `@Transactional` CGLIB 프록시가 안 만들어져 **트랜잭션이 조용히 사라진다** | allOpen 결과를 테스트로 확인 |
+| `@Transactional` 위치 | 클래스 레벨과 메서드 레벨(readOnly)이 뒤바뀌면 읽기 전용 경계가 사라진다 | 어노테이션 값까지 테스트로 고정 |
+| 반환 타입 | boxed `Long` → primitive `long` | `Long?` 유지 (아래 회귀) |
+| 호출 순서 | 보안·정합성 계약인 자리가 있다 | 원본 순서 그대로 |
+
+## 유지한 호출 순서 (보안·정합성 계약)
+
+- `EmailVerificationService.confirmVerification` — 이미 인증됨 확인 → 코드 조회 → 문자열 일치 →
+  **코드 삭제 후** 인증 상태 반영. 삭제를 뒤로 미루면 같은 코드를 두 번 쓸 여지가 생긴다.
+- `PasswordResetService.requestReset` — `DELETED` 아님 → 로컬 로그인 가능만 통과, 쿨다운 중이면 **조용히 반환**
+  (계정 존재 여부를 응답으로 노출하지 않는다). 재요청 시 **이전 토큰을 먼저 무효화**한 뒤 새 토큰 저장.
+- `PasswordResetService.confirmReset` — 토큰 해시 조회 → 회원 조회 → 로컬 로그인 가드 → 비밀번호 변경 →
+  **tokenHash 삭제 → memberId 삭제 → refresh token 삭제**.
+- `RefreshTokenService.validateAndGetMemberId` — JWT 파싱 → refresh 타입 확인 → 저장소 조회 → 문자열 일치.
+  catch 순서(`ExpiredJwtException` 먼저)도 그대로다 — 뒤집으면 만료 토큰이 INVALID 로 매핑된다.
+- `RefreshTokenService.deleteByMemberId` — 로그아웃만 fail-open(`DataAccessException` 을 삼키고 로그만).
+  나머지는 fail-closed(try/catch 를 두지 않는 것 자체가 정책).
+
+## 실제로 잡은 회귀 — boxed `Long` → primitive `long` 🔴
+
+`validateAndGetMemberId` 를 Kotlin `Long`(non-null)으로 옮겼더니 반환 타입이 primitive `long` 이 됐다.
+
+```
+- public java.lang.Long validateAndGetMemberId(java.lang.String);
++ public long validateAndGetMemberId(java.lang.String);
+```
+
+**컴파일도 통과하고 기존 테스트 839건도 전부 통과했다** — Java 호출부(`AuthController`)가 자동 언박싱으로
+받기 때문이다. 이번에 추가한 `AuthSupportServiceJvmSurfaceTest` 가 잡아냈고 `Long?` 로 복원했다.
+1단계 `oidcNonce`·2단계 `findByMemberId`·3단계와 **같은 "참조형 → primitive 축소" 계열**이다.
+
+## 메일 계약
+
+`SmtpEmailSender` 는 발신자 표기(`마켓온 <주소>`), `SimpleMailMessage`(HTML 아님), 필드 설정 순서
+(from → to → subject → text), `MailException` → `EMAIL_SEND_FAILED` 매핑, 실패 로그에 수신자만 남기는 처리를
+그대로 유지했다. `@Async` 를 새로 붙이지 않았다(원본이 동기 발송).
+메일 제목 2종(`[마켓온] 이메일 인증 코드 안내`·`[마켓온] 비밀번호 재설정 안내`)과 본문 문자열,
+재설정 링크 형식(`{base}/password-reset?token={raw}`)도 문자열 그대로다.
+
+**실제 SMTP 발송은 하지 않았다.** 기존 mock 기반 테스트가 발송 호출을 검증한다.
+
+## 허용 차이 — `EmailVerificationService` 의 email nullability
+
+DTO 의 `email` 은 `@NotBlank` 로 컨트롤러 경계에서 검증되지만, 1단계에서 DTO 를 옮길 때 원본 Java 필드가
+참조형이라 nullable 로 유지했다. 서비스 안에서 non-null 로 좁히는 헬퍼(`requireNotNullEmail`)를 뒀다.
+원본도 `null` 이면 발송 시점에 실패했으므로 **"null 을 정상 처리하지 않는다"는 계약은 같지만**,
+실패 시점이 발송 직전에서 진입 직후로 앞당겨지고 예외 종류가 NPE 에서 `INVALID_INPUT_VALUE` 로 바뀐다.
+검증을 통과한 정상 요청에서는 도달할 수 없는 경로다.
+
+## 검증
+
+| 항목 | baseline(`0a5af2d`) | 5단계 후 |
+|---|---|---|
+| `test` | 839 / 실패 0 / skip 0 | **852 / 실패 0 / skip 0** (+13) |
+| auth | 293 | **306** (+13) |
+| `integrationTest` | 44 실행 / 43 통과 / 비활성화 1 | **동일** |
