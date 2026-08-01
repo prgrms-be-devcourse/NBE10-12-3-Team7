@@ -92,6 +92,47 @@ Java → Kotlin 전환을 도메인 단위로 진행한다. 전환된 파일은 
 - `record` → `data class` 는 **접근자 이름이 바뀐다**(`productId()` → `getProductId()`).
   깨진 호출부는 grep 말고 `./gradlew compileJava` 로 찾는다.
 
+### 테스트 전환 시 규칙
+
+- **테스트 이름은 백틱으로 감싼 한글 문장.** `@DisplayName` 은 `@Nested` 클래스에만 남긴다.
+
+- **`@Nested` 를 붙일 클래스는 `inner class` 로 선언한다.**
+  Kotlin 은 클래스 안에 클래스를 쓰면 기본이 "바깥과 분리된 클래스"다. JUnit 은 바깥 클래스와
+  이어진 것만 중첩 테스트로 인정하므로, `inner` 를 붙여야 테스트가 실행된다.
+
+- **`static` 이 필요한 것은 `companion object` 안에 넣고 `@JvmStatic` 을 붙인다.**
+  Kotlin 에는 `static` 이 없어서 Java 쪽에 static 으로 보이게 만들어줘야 한다.
+  - `@DynamicPropertySource` 는 static 메서드만 인식한다 → `@JvmStatic` 필요
+  - static `@TempDir` 은 `@field:TempDir` 까지 붙여야 한다. 안 붙이면 어노테이션이 엉뚱한
+    자리에 걸려 디렉터리가 안 만들어진다.
+
+- **Mockito 의 `any()` 를 Kotlin 에서 그냥 쓰면 터진다.**
+  `any()` 는 "아무 값이나 매칭" 표시를 남기고 실제로는 **null 을 돌려준다.** 그런데 Kotlin 은
+  null 이 들어오면 안 되는 자리에 null 검사 코드를 자동으로 넣기 때문에,
+  `IllegalStateException: any() must not be null` 로 즉시 실패한다.
+  타입을 한 번 우회시키는 헬퍼로 검사를 피한다.
+
+  ```kotlin
+  @Suppress("UNCHECKED_CAST")
+  private fun <T> anyValid(): T { ArgumentMatchers.any<T>(); return null as T }
+  ```
+
+  단, **Java 로 작성된 메서드의 파라미터**에는 그냥 `any()` 를 써도 된다. Kotlin 이 Java 코드의
+  null 허용 여부를 알 수 없어 검사 코드를 넣지 않기 때문이다.
+
+- **메서드 자체에 타입 파라미터가 붙은 API 는 Kotlin 이 타입을 못 맞춘다.**
+  예: `JpaSpecificationExecutor.findBy`. 인자 자리에서 `anyValid()` 의 타입을 추론하지 못해
+  컴파일이 안 된다. 호출 한 벌을 확장 함수로 만들어 **stub 할 때와 verify 할 때가 같은 형태**를
+  쓰게 고정한다. 이때 반환 타입은 nullable(`?`)로 둔다 — 실제로 값을 받는 호출이 아니라
+  "이렇게 부를 거야"라고 표시만 하는 호출이라 null 이 온다.
+
+- **assertj 의 `extracting` 은 Kotlin 에서 쓰지 않는다.**
+  `extracting` 은 이름이 같은 메서드가 여러 개라 Kotlin 이 어느 것을 부를지 못 고른다.
+  `map { it.title }` 로 먼저 뽑고 단언한다. 결과는 동일하다.
+
+- **번역이지 개선이 아니다.** 단언·픽스처·teardown 순서를 원본 그대로 옮긴다.
+  다 옮긴 뒤 `@Test` 개수와 단언 개수를 Java 원본과 세어서 맞춰본다.
+
 ### 절차
 
 ```bash
