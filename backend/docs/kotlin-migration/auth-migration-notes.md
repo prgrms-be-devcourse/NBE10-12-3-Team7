@@ -1266,3 +1266,64 @@ Kotlin 접근 방식을 확인해야 한다는 사례로 남긴다.
 신규 테스트는 `AuthStoreJvmSurfaceTest`(13건 — 시그니처·프로파일·빈 경계)와
 `AuthStoreContractTest`(24건 — TTL·덮어쓰기·consume·발급 한도)로 나눴다.
 Redis key·TTL·Lua 원자성은 기존 Testcontainers 통합 테스트가 이미 담당해 중복하지 않았다.
+
+---
+
+# PR D — OAuth client·config (4단계)
+
+대상 7개: client 6(`OAuthClient`·`OAuthClientErrorMapper`·`OAuthAuthorizationUrlFactory`
+·`KakaoOAuthClient`·`GoogleOAuthClient`·`GoogleIdTokenValidator`) + config 1(`OAuthWebClientConfig`).
+기준선은 PR #80 병합본(`1fae662`).
+
+## 이 계층에서 지켜야 했던 것
+
+| 계약 | 왜 위험한가 |
+|---|---|
+| `@Bean` 메서드 이름 `oauthWebClient` | Kotlin 함수 이름이 곧 빈 이름이고, 카카오·구글 클라이언트가 **파라미터 이름으로** 이 빈을 지목한다 |
+| form/query 파라미터 이름·값 | 제공자와의 계약. `scope`(`account_email` / `openid email`)·`code_challenge_method=S256` 등 |
+| 응답 JSON 필드명 | `@JsonNaming(SnakeCaseStrategy)` + `@JsonIgnoreProperties(ignoreUnknown = true)` 유지 |
+| 오류 매핑 순서 | `WebClientResponseException`(4xx/그 외) → `WebClientRequestException` → `CodecException`/`DataBufferLimitException` → `RuntimeException(cause=Timeout)` |
+| nonce 상수시간 비교 | `MessageDigest.isEqual` 을 `==` 로 바꾸면 타이밍 공격 방어가 사라진다 |
+
+## 응답 DTO 를 non-null 로 조이지 않은 이유
+
+원본 Java record 의 필드는 전부 참조형이고, **null 일 때 정해진 `ErrorCode` 로 실패하는 흐름 자체가 계약**이다
+(`accessToken` 없음 → `OAUTH_PROVIDER_ERROR`, 이메일 없음 → `OAUTH_EMAIL_NOT_PROVIDED`,
+미인증 → `OAUTH_EMAIL_NOT_VERIFIED`). Kotlin 에서 non-null 로 선언하면 Jackson 역직렬화 시점에
+`MissingKotlinParameterException` 이 나면서 **오류 종류가 통째로 바뀐다.** 그래서 nullable + 기본값 `null` 로 뒀다.
+
+## `OAuthClientErrorMapper` — 유일하게 표면이 넓어진 자리 🔴
+
+원본은 **package-private `final class`** + private 생성자 + **package-private `static` 메서드**였다.
+**Kotlin 에는 package-private 가시성이 없다.** `internal` 로 선언해도 JVM 바이트코드에서는 `public` 이 된다.
+
+| | 전환 전 | 전환 후 |
+|---|---|---|
+| 클래스 | `final class`(package-private) | `public class` |
+| `call` | `static`(package-private) | `public static` |
+| 추가 | — | `Companion` 필드, `static {}` |
+
+**버린 대안**
+- top-level 함수로 옮기기 → `OAuthClientErrorMapperKt` 라는 새 public 클래스가 생기고 호출 경로가 바뀐다.
+- `private` 로 낮추기 → 카카오·구글 두 클라이언트에서 못 쓴다.
+- 각 클라이언트에 로직 복제 → 매핑 규칙이 두 곳으로 갈라진다(원본이 공통화한 이유를 깬다).
+
+`internal` 을 붙여 **Kotlin 코드에서는 모듈 밖 접근이 컴파일 단계에서 막히도록** 했고, 이 클래스는
+`auth.client` 패키지 내부 유틸이라 실사용상 노출 위험은 없다고 판단했다. 나머지 6개는 공개 표면 diff 0 이다.
+
+## 검증
+
+| 항목 | baseline(`1fae662`) | 4단계 후 |
+|---|---|---|
+| `test` | 818 / 실패 0 / skip 0 | **839 / 실패 0 / skip 0** (+21) |
+| auth | 272 | **293** (+21) |
+| `integrationTest` | 44 실행 / 43 통과 / 비활성화 1 | **동일** |
+
+신규 테스트는 `OAuthClientJvmSurfaceTest`(13건 — 시그니처·빈 이름·생성자 파라미터 타입)와
+`OAuthAuthorizationUrlContractTest`(8건 — 인가 URL 의 파라미터 이름·값)로 나눴다.
+쿼리 파라미터 **순서는 계약으로 고정하지 않았다** — 원본이 순서를 보장한다는 근거가 없다.
+
+**실서비스 카카오·구글 OAuth 수동 검증은 하지 않았다.** 개발용 client id/secret 과 등록된 redirect URI 가
+없어 실행할 수 없는 외부 연동 절차다. 테스트에는 `test-kakao-client-id` 같은 명백한 dummy 값만 썼다.
+토큰 교환·사용자정보 호출의 실제 HTTP 왕복은 기존 `KakaoOAuthClientTest`·`GoogleOAuthClientTest`(MockWebServer)가
+담당하며, 이번 전환 후에도 그대로 통과한다.
