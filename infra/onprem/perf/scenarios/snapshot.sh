@@ -52,6 +52,10 @@ declare -a PATHS=(
 # 관리자 컨트롤러 8개가 전부 페이징이 없어 목록을 통째로 반환한다.
 # 무거워서 샘플을 줄이고, 순서상 **맨 뒤**에 둔다 — 81 MB 응답이 버퍼풀을 휩쓸어
 # 앞선 측정에 영향을 주지 않게 하기 위해서다.
+# 관리자 프로브는 기본으로 돌리지 않는다. 문제(페이징 없음 → 응답 수십 MB)를 이미 확인했고,
+# 매 계단마다 81 MB 를 7번 내려받으면 측정 시간과 버퍼풀 오염만 커진다.
+# 관리자 화면을 다시 볼 때만 켠다:  PROBE_ADMIN=true ./scenarios/snapshot.sh <계단>
+PROBE_ADMIN="${PROBE_ADMIN:-false}"
 ADMIN_SAMPLES="${ADMIN_SAMPLES:-3}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-admin@dongnemarket.com}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin1234!}"
@@ -107,7 +111,8 @@ for i in "${!NAMES[@]}"; do
   ep_json="$ep_json\"${NAMES[$i]}\":{\"path\":\"${PATHS[$i]}\",\"median_ms\":$med,\"min_ms\":$min,\"max_ms\":$max}"
 done
 
-# ── 관리자 화면 ──────────────────────────────────────────────────────────────
+# ── 관리자 화면 (기본 꺼짐) ──────────────────────────────────────────────────
+if [ "$PROBE_ADMIN" = "true" ]; then
 token="$(curl -s -X POST "$BASE_URL/api/auth/login" -H 'Content-Type: application/json' \
   -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" \
   | python3 -c 'import sys,json
@@ -129,6 +134,9 @@ for i in "${!ADMIN_NAMES[@]}"; do
 done
 SAMPLES=$SAVED_SAMPLES
 unset AUTH_HEADER
+else
+  note "관리자 프로브 건너뜀 (PROBE_ADMIN=true 로 켠다)"
+fi
 
 cat > "$OUT" <<JSON
 {

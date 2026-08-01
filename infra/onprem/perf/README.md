@@ -85,6 +85,17 @@ bash -c 'source lib/common.sh; require_stack; echo "DB $(db_size_mib) MiB / 히�
 | `admin_members` | 관리자 회원 목록 | `GET /api/admin/members` (인증) |
 | `admin_dashboard` | 관리자 대시보드 집계 | `GET /api/admin/dashboard` (인증) |
 
+관리자 프로브는 **기본으로 실행되지 않는다.** 문제를 이미 확인했기 때문이다 — 상품 10만 건에서
+`admin_products` 가 1.9초, 응답 81 MB. 페이징이 없어 목록을 통째로 반환하는 구조라 볼륨을
+올릴수록 선형으로 커진다. 매 계단마다 81 MB 를 반복해 내려받으면 측정 시간과 버퍼풀 오염만
+커지고 새로 알게 되는 것은 없다.
+
+다시 볼 때만 켠다:
+
+```bash
+PROBE_ADMIN=true ./scenarios/snapshot.sh <계단>
+```
+
 **재지 않는 것** — 카테고리 탭과 검색창은 서버를 부르지 않는다. 이미 받아온 배열을
 클라이언트에서 거른다(`products/page.tsx`). `/api/categories`(8건)와 `/api/regions`(5,338건)는
 고정 크기라 볼륨과 무관하다.
