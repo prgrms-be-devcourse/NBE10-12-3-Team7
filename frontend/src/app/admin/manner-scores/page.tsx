@@ -60,10 +60,10 @@ export default function AdminMannerScoresPage() {
               onChange={e => setThresholdInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && applyThreshold()}
             />
-            <div className={styles.hint}>기본값 20.0 — 값을 바꾸고 조회를 누르면 다시 검색해요.</div>
           </div>
-          <button type="button" className="btn" onClick={applyThreshold}>조회</button>
+          <button type="button" className={`btn ${styles.filterBtn}`} onClick={applyThreshold}>조회</button>
         </div>
+        <div className={styles.hint} style={{ marginTop: -10, marginBottom: 18 }}>기본값 20.0 — 값을 바꾸고 조회를 누르면 다시 검색해요.</div>
 
         {members.length === 0 ? (
           <div className={styles.empty}><p>기준치 이하인 회원이 없어요.</p></div>

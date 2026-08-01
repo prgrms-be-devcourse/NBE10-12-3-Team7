@@ -14,7 +14,13 @@ interface Section {
   descLines: Line[]
   cta?: boolean
   bg?: string
+  bgDark?: string
   bgOpacity?: number
+  bgBrightness?: number
+  bgBrightnessDark?: number
+  bgSaturate?: number
+  splash?: boolean
+  titleCls?: string
 }
 
 const SECTIONS: Section[] = [
@@ -26,24 +32,31 @@ const SECTIONS: Section[] = [
     ],
     descLines: ['스크롤을 내려서 조금 더 알아볼까요?'],
     bg: '/marketon-hero.png',
+    bgDark: '/marketon-hero-dark.png',
   },
   {
     eyebrow: ['🏘️ 우리 동네 중고거래'],
     titleLines: ['가까운 이웃과 함께하는', '따뜻한 거래 플랫폼이에요'],
     descLines: ['필요 없는 물건은 나누고,', '필요한 물건은 우리 동네에서 합리적으로 만나보세요.'],
     bg: '/marketon-section2.png',
+    bgDark: '/marketon-section2-dark.png',
     bgOpacity: 0.4,
+    bgBrightnessDark: 1.2,
   },
   {
     eyebrow: ['💬 채팅 · 관심 · 동네 인증'],
     titleLines: ['관심 상품은 저장하고,', '채팅으로 편하게 거래해요'],
     descLines: ['실시간 채팅과 관심 알림까지 — 거래에 필요한 기능이 다 있어요.'],
+    bg: '/marketon-section3.png',
+    bgDark: '/marketon-section3-dark.png',
+    titleCls: 'titleBlackLight',
   },
   {
     eyebrow: ['🚀 시작해볼까요?'],
     titleLines: ['지금 가입하고', '첫 거래를 시작해보세요'],
     descLines: ['아래 버튼을 눌러 회원가입을 시작해보세요.'],
     cta: true,
+    splash: true,
   },
 ]
 
@@ -123,16 +136,26 @@ export default function Home() {
             <div
               className={styles.heroBg}
               style={{
-                backgroundImage: `url(${section.bg})`,
-                ...(section.bgOpacity != null ? { '--hero-opacity': section.bgOpacity } as React.CSSProperties : {}),
-              }}
+                '--hero-bg': `url(${section.bg})`,
+                ...(section.bgDark ? { '--hero-bg-dark': `url(${section.bgDark})` } : {}),
+                ...(section.bgOpacity != null ? { '--hero-opacity': section.bgOpacity } : {}),
+                ...(section.bgBrightness != null ? { '--hero-brightness': section.bgBrightness } : {}),
+                ...(section.bgBrightnessDark != null ? { '--hero-brightness-dark': section.bgBrightnessDark } : {}),
+                ...(section.bgSaturate != null ? { '--hero-saturate': section.bgSaturate } : {}),
+              } as React.CSSProperties}
               aria-hidden="true"
             />
+          )}
+          {section.splash && (
+            <div className={styles.ctaSplash} aria-hidden="true">
+              <span className={`${styles.splashCircle} ${styles.splashPink}`} />
+              <span className={`${styles.splashCircle} ${styles.splashYellow}`} />
+            </div>
           )}
           <span className={styles.eyebrow}>
             <Stagger lines={section.eyebrow} stagger={stagger} startIndex={eyebrowStart} />
           </span>
-          <h1 className={styles.title}>
+          <h1 className={`${styles.title}${section.titleCls ? ' ' + styles[section.titleCls] : ''}`}>
             <Stagger lines={section.titleLines} stagger={stagger} startIndex={titleStart} />
           </h1>
           <p className={styles.desc}>

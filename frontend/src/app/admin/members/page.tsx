@@ -87,14 +87,20 @@ export default function AdminMembersPage() {
           </div>
           <div className={styles.field}>
             <label>회원 상태</label>
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'ALL' | MemberStatus)}>
-              <option value="ALL">전체</option>
-              <option value="ACTIVE">정상</option>
-              <option value="SUSPENDED">정지</option>
-              <option value="DELETED">탈퇴</option>
-            </select>
+            <div className={styles.statusToggle}>
+              {(['ALL', 'ACTIVE', 'SUSPENDED', 'DELETED'] as const).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`${styles.statusToggleBtn}${statusFilter === s ? ' ' + styles.statusToggleOn : ''}`}
+                  onClick={() => setStatusFilter(s)}
+                >
+                  {s === 'ALL' ? '전체' : MEMBER_STATUS_LABEL[s]}
+                </button>
+              ))}
+            </div>
           </div>
-          <button type="submit" className="btn">검색</button>
+          <button type="submit" className={`btn ${styles.filterBtn}`}>검색</button>
         </form>
 
         <div className={styles.tablewrap}>

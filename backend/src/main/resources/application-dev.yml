@@ -7,15 +7,8 @@ spring:
       hibernate:
         format_sql: true
 
-  # dev: 관리자 AI는 로컬 Ollama로 (사내 IP 대신).
-  # 로컬은 CPU 추론이라 느리다 → base(qwen3:14b)보다 가벼운 qwen3:1.7b를 기본값으로.
-  ai:
-    ollama:
-      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-      chat:
-        options:
-          model: ${OLLAMA_MODEL:qwen3:1.7b}
-
+  # 관리자 AI(Ollama)는 base application.yml에서 이미 localhost:11434 + qwen3:1.7b로 통일됐다.
+  # dev는 그 기본값을 그대로 상속한다(호스트 bootRun → 루트 docker-compose의 ollama 컨테이너).
   # 로컬 CPU 추론이 느려(수십 초~분) 기본 read-timeout을 넘겨 AI 호출이 끊기는 것을 방지.
   # non-stream 호출(ChatClient.call())이 쓰는 RestClient가 이 값을 따른다(Spring Boot 3.4+).
   http:

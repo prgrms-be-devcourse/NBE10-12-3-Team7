@@ -50,13 +50,15 @@ spring:
     serialization:
       write-dates-as-timestamps: false
 
-  # Spring AI - 사내 Ollama (관리자 AI 어시스턴트)
+  # Spring AI - Ollama (관리자 AI 어시스턴트). 전 환경 컨테이너 Ollama + qwen3:1.7b로 통일(사내 서버 폐기).
+  # 기본값은 dev(호스트 bootRun → 루트 docker-compose의 ollama 컨테이너, localhost:11434)용.
+  # prod/cloud/onprem은 앱 컨테이너에서 OLLAMA_BASE_URL=http://ollama:11434 로 co-locate된 ollama를 가리킨다(env 주입).
   ai:
     ollama:
-      base-url: ${OLLAMA_BASE_URL:http://10.111.111.90:11434}
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
         options:
-          model: ${OLLAMA_MODEL:qwen3:14b}
+          model: ${OLLAMA_MODEL:qwen3:1.7b}
           temperature: 0.1
 
   # 이메일 인증 / 비밀번호 재설정 메일 발송 (SMTP). 자격증명은 기본값 없이 환경변수로만 주입.

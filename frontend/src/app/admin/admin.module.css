@@ -29,7 +29,7 @@
 .nm span { color: var(--text-muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
 .logoutBtn {
   padding: 9px 16px; border: 1px solid #512e43; border-radius: 999px;
-  background: #3a2230; color: #e3d2db; font-size: 14px; font-weight: 600;
+  background: #3a2230; color: #fff; font-size: 14px; font-weight: 600;
   font-family: inherit; cursor: pointer; transition: background .15s, color .15s;
 }
 .logoutBtn:hover { background: #512e43; color: #fff; }
@@ -41,8 +41,10 @@
 .narrow { max-width: 760px; }
 
 /* 통계 카드 */
-.statGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-bottom: 22px; }
-.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); }
+.statGrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 22px; }
+@media (max-width: 900px) { .statGrid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
+.statGridTwo { grid-template-columns: repeat(2, 1fr); }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); text-align: center; }
 .statL { color: var(--text-muted); font-size: 13px; margin-bottom: 9px; }
 .statN { font-size: 27px; font-weight: 800; letter-spacing: -.03em; color: var(--primary-d); }
 
@@ -58,6 +60,7 @@
 .field { margin-bottom: 15px; }
 .field label { display: block; font-weight: 700; font-size: 13px; margin-bottom: 7px; }
 .field .hint { font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+.hint { font-size: 13px; color: var(--text-muted); }
 .field input, .field select, .field textarea {
   width: 100%; padding: 11px 13px; border: 1px solid var(--border); border-radius: 11px;
   font-size: 14px; font-family: inherit; background: var(--bg); color: var(--text); outline: none;
@@ -67,6 +70,19 @@
 .field textarea { resize: vertical; min-height: 90px; }
 .filter { display: flex; gap: 11px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 18px; }
 .filter .field { margin-bottom: 0; flex: 1; min-width: 160px; }
+.filterBtn { height: 45px; padding: 0 18px; }
+
+.statusToggle {
+  display: flex; height: 45px; gap: 3px; padding: 3px;
+  border: 1px solid var(--border); border-radius: 11px; background: var(--surface-2);
+}
+.statusToggleBtn {
+  flex: 1; border: none; border-radius: 9px; background: transparent;
+  color: var(--text-muted); font-size: 13px; font-weight: 700; font-family: inherit;
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.statusToggleBtn:hover { color: var(--text); }
+.statusToggleOn, .statusToggleOn:hover { background: var(--primary); color: #fff; }
 
 /* 테이블 */
 .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; }
@@ -100,20 +116,30 @@
 /* AI 어시스턴트 챗 — 화면을 꽉 채우는 단일 카드형 챗 */
 .aiShell {
   display: flex; flex-direction: column;
-  height: calc(100vh - 110px); min-height: 460px; max-width: 880px;
+  height: calc(100vh - 110px); min-height: 460px; width: 100%;
 }
 .aiHead { margin-bottom: 16px; flex-shrink: 0; }
 .aiTitle {
   font-size: 23px; font-weight: 800; letter-spacing: -.03em;
   display: flex; align-items: center; gap: 10px;
 }
+.aiIcon {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary) 40%, #f3e25c 100%);
+  box-shadow: var(--shadow-hover);
+  transition: transform .15s;
+}
+.aiIcon:hover { transform: scale(1.05); }
+.aiIcon:active { transform: scale(0.97); }
 .aiSub { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
 
 .chatCard {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;
-  border: 1px solid var(--border); border-radius: 20px;
-  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+  border: 1px solid var(--border); border-radius: 22px;
+  background: var(--surface); box-shadow: 0 12px 32px -16px color-mix(in srgb, var(--text) 22%, transparent);
+  overflow: hidden;
 }
 
 .chatLog {
@@ -127,14 +153,19 @@
 .chatMsg.user { justify-content: flex-end; }
 .chatAvatar {
   flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 11px; font-weight: 800;
-  background: linear-gradient(135deg, var(--primary), var(--primary-d)); color: #fff;
-  box-shadow: 0 2px 7px color-mix(in srgb, var(--primary) 38%, transparent);
+  display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary) 40%, #f3e25c 100%);
+  box-shadow: var(--shadow-hover);
+  transition: transform .15s;
 }
+.chatAvatar:hover { transform: scale(1.05); }
+.chatAvatar:active { transform: scale(0.97); }
+.chatAvatarError { background: var(--danger); }
 .chatBubble {
   max-width: 76%; padding: 12px 16px; border-radius: 16px 16px 16px 5px;
   background: var(--bg); border: 1px solid var(--border); color: var(--text);
   font-size: 13.5px; line-height: 1.65; white-space: pre-line; word-break: break-word;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 6%, transparent);
 }
 .chatMsg.user .chatBubble {
   background: linear-gradient(135deg, var(--primary), var(--primary-d)); color: #fff;
@@ -165,11 +196,17 @@
 }
 .chatChips { display: flex; gap: 8px; flex-wrap: wrap; }
 .chatChip {
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 13px; border: 1px solid var(--border); border-radius: 999px;
   font-size: 12.5px; font-weight: 600; background: var(--bg); color: var(--text-muted);
   cursor: pointer; font-family: inherit; transition: all .15s;
 }
+.chatChip::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--primary); opacity: .55; transition: opacity .15s;
+}
 .chatChip:hover { border-color: transparent; color: var(--primary-d); background: var(--primary-soft); }
+.chatChip:hover::before { opacity: 1; }
 
 .chatInputRow { display: flex; gap: 10px; align-items: center; }
 .chatInputRow input {
@@ -182,9 +219,10 @@
 .chatSendBtn {
   flex-shrink: 0; width: 46px; height: 46px; border: none; border-radius: 50%;
   background: var(--primary); color: #fff; display: grid; place-items: center;
-  cursor: pointer; transition: background .15s, transform .1s;
+  cursor: pointer; transition: background .15s, transform .1s, box-shadow .15s;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--primary) 35%, transparent);
 }
-.chatSendBtn:hover:not(:disabled) { background: var(--primary-d); }
+.chatSendBtn:hover:not(:disabled) { background: var(--primary-d); box-shadow: 0 4px 14px color-mix(in srgb, var(--primary) 45%, transparent); }
 .chatSendBtn:active:not(:disabled) { transform: scale(.92); }
 .chatSendBtn:disabled { opacity: .45; cursor: not-allowed; }
 

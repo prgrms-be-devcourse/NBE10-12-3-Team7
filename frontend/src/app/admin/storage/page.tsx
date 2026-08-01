@@ -138,7 +138,7 @@ export default function AdminStoragePage() {
       <div className={styles.ptitle}>저장소 고아파일 정리</div>
       <div className={styles.pdesc}>DB가 더 이상 참조하지 않는 업로드 파일을 찾아 정리합니다.</div>
 
-      <div className={styles.statGrid}>
+      <div className={`${styles.statGrid} ${styles.statGridTwo}`}>
         <div className={styles.stat}>
           <div className={styles.statL}>고아파일 개수</div>
           <div className={styles.statN}>{scan.totalCount}개</div>
@@ -160,18 +160,18 @@ export default function AdminStoragePage() {
               onChange={e => setGraceHoursInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && applyGraceHours()}
             />
-            <div className={styles.hint}>이 시간 이내에 수정된 파일은 업로드 진행 중일 수 있어 제외해요.</div>
           </div>
-          <button type="button" className="btn" onClick={applyGraceHours}>조회</button>
+          <button type="button" className={`btn ${styles.filterBtn}`} onClick={applyGraceHours}>조회</button>
           <button
             type="button"
-            className="btn danger"
+            className={`btn danger ${styles.filterBtn}`}
             onClick={deleteSelected}
             disabled={selected.size === 0 || deleting}
           >
             {deleting ? '삭제 중...' : `선택 삭제 (${selected.size})`}
           </button>
         </div>
+        <div className={styles.hint} style={{ marginTop: -12, marginBottom: 18 }}>이 시간 이내에 수정된 파일은 업로드 진행 중일 수 있어 제외해요.</div>
 
         {scan.orphans.length === 0 ? (
           <div className={styles.empty}><p>고아파일이 없어요.</p></div>
