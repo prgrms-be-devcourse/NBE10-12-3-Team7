@@ -27,10 +27,13 @@ BASE_URL=http://192.168.0.10 MYSQL_CONTAINER=other-mysql ./scenarios/...
 | 경로 | 역할 |
 |---|---|
 | `lib/common.sh` | 공통 헬퍼. `../.env` 로드, MySQL 실행, Prometheus 조회 |
-| `dataset/` | 적재할 볼륨 데이터(SQL). **아직 비어 있다** |
-| `probe/` | 측정용 k6 스크립트. **아직 비어 있다** |
-| `scenarios/` | 계단 실행 절차. **아직 비어 있다** |
-| `results/` | 측정 기록. 실행 단위 폴더로 쌓인다 |
+| `dataset/00-precheck.sql` | 적재 전 전제 확인 — 마스터 데이터·현재 건수·버퍼풀 |
+| `dataset/10-products.sql` | 볼륨 상품 적재. `@add_rows` 만 바꿔 계단마다 재실행(누적) |
+| `dataset/90-verify.sql` | 적재 후 건수·크기·분포 검증 |
+| `dataset/99-cleanup.sql` | 마커(`[perf]`)가 붙은 볼륨 데이터만 삭제 |
+| `scenarios/snapshot.sh` | 현재 상태를 재서 `results/` 에 남긴다 |
+| `results/TEMPLATE-manual.md` | 화면 클릭 실측 템플릿. 실행 폴더에 복사해 쓴다 |
+| `probe/` | k6 프로브. **아직 비어 있다** |
 
 > 이 표에는 **실제로 존재하는 것만** 적는다. 이전 loadtest/ 는 README가 스크립트 12개를
 > 안내하는데 실제로는 8개뿐이어서 신뢰를 잃었다. 없는 파일을 미리 적지 않는다.
@@ -94,6 +97,19 @@ bash -c 'source lib/common.sh; require_stack; echo "DB $(db_size_mib) MiB / 히�
 - **인덱스 추가** — `products` 에 검색용 인덱스가 없는 것은 결함이지만 지금은 그대로 둔다
 - **버퍼풀 확대** — 128 MiB 기본값 유지. 3단계에서 넘치는 것을 보고 나서 올린다
 
+## 기록 방법
+
+계단마다 세 가지를 남긴다. 자동과 수동을 **같은 계단 단위로 묶어야** 비교가 성립한다.
+
+| 무엇 | 어떻게 | 어디에 |
+|---|---|---|
+| 적재량·DB 크기·히트율·API 응답시간 | `./scenarios/snapshot.sh <계단>` | `results/<실행>/step-N.json` |
+| 화면 클릭 체감 | `TEMPLATE-manual.md` 를 복사해 기입 | `results/<실행>/manual.md` |
+| 계단별 비교 결론 | 위 둘을 보고 작성 | `results/<실행>/summary.md` |
+
+서버가 몇 ms 걸렸는가와 사용자가 느리다고 느끼는가는 다른 질문이다. **체감이 꺾이는 계단**이
+이 실험의 답이므로 수동 기록을 빼먹지 않는다.
+
 ## 규칙
 
 1. **README는 존재하는 파일만 나열한다.** 계획은 아래 "앞으로" 절에 분리해 적는다
@@ -114,9 +130,6 @@ bash -c 'source lib/common.sh; require_stack; echo "DB $(db_size_mib) MiB / 히�
 
 아직 **없는** 것들이다. 순서대로 채운다.
 
-- [ ] `dataset/00-precheck.sql` — 전제 확인(테이블·컬럼·기존 건수)
-- [ ] `dataset/10-products.sql` — 상품. 파라미터 상단, 분포 편중 포함
-- [ ] `dataset/90-verify.sql` · `99-cleanup.sql` — 검증과 정리를 짝으로
-- [ ] `probe/products-list.js` — 측정 절차 검증용 첫 프로브
-- [ ] `scenarios/volume-steps.sh` — 계단 루프 자동화
-- [ ] `dataset/20-comments.sql` · `30-notifications.sql`, 나머지 프로브
+- [ ] `probe/*.js` — k6 프로브. 지금은 snapshot.sh 가 curl 로 재고 있어 동시성이 없다
+- [ ] `scenarios/volume-steps.sh` — 적재 → 안정화 → 스냅샷을 계단 전체에 대해 자동 반복
+- [ ] `dataset/20-comments.sql` · `30-notifications.sql`
