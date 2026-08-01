@@ -1046,3 +1046,70 @@ cd backend
 여기에 각 단계의 `javap` 비교(위 「검증 방법론」)와 단계별 검토 항목을 더한다.
 `develop` 병합 **직후** 전체 테스트를 한 번 더 돌린다 — Java↔Kotlin 혼재 기간의 도메인 간 컴파일
 영향은 자기 브랜치 테스트로 잡히지 않는다(`infra/infra.md`).
+
+---
+
+# OpenAPI schema 계약 — `@get:JvmName` 이 문서를 깨뜨린 사례 🔴
+
+## 발견 경위
+
+전환 PR 을 올리기 전 **실제로 서버를 띄워 `/v3/api-docs` 를 받아** 전환 전(`origin/develop`, `cebb0a5`,
+전부 Java)을 별도 포트에 띄운 결과와 대조하다가 발견했다. **기존 테스트 728건은 전부 통과한 상태였다.**
+
+## 무엇이 달라졌나
+
+| schema | 전환 전(Java) | 전환 후(Kotlin, 수정 전) |
+|---|---|---|
+| `LoginRequest.properties` | `email, password, autoLogin` | `email, password, autoLogin(writeOnly), **isAutoLogin**` |
+| `LoginRequest.required` | (없음) | `isAutoLogin` |
+| `SignupRequest.properties` | `…, termsAgreed, personalInfoCollectionAgreed` | + `isTermsAgreed`, `isPersonalInfoCollectionAgreed` |
+| `SignupRequest.required` | (없음) | `isTermsAgreed`, `isPersonalInfoCollectionAgreed` |
+| `EmailVerificationConfirmResponse` | `email, verified` | `email, verified` (동일 — 이미 `@get:JsonProperty` 가 붙어 있었다) |
+| `OAuthAuthorizationStart.required` | (없음) | `expiresInSeconds` |
+
+## 원인 두 가지
+
+**① `@get:JvmName` 만 붙은 프로퍼티 → 팬텀 필드**
+springdoc 이 `isAutoLogin()` getter 를 프로퍼티 `autoLogin` 과 **별개의 프로퍼티**로 읽는다.
+그래서 읽기 전용 `isAutoLogin` 이 새로 생기고, 필드 쪽만 남은 `autoLogin` 은 `writeOnly` 로 뒤집힌다.
+Jackson 은 두 접근자를 하나로 합치므로 **런타임 JSON 은 멀쩡하다** — 그래서 테스트가 통과했다.
+
+응답 DTO(`EmailVerificationConfirmResponse`)만 멀쩡했던 이유는, JSON 필드 소실 회귀를 고치면서
+이미 `@get:JsonProperty("verified")` 를 붙여뒀기 때문이다. 즉 **규칙 자체는 이미 문서에 있었는데
+요청 DTO 3곳에 적용되지 않은 상태**였다.
+
+**② Kotlin non-null 타입 → 자동 `required` 승격**
+springdoc 은 Kotlin 의 non-null 프로퍼티를 `required` 로 올린다. 원본 Java 의 primitive
+`boolean`/`long` 은 required 가 아니었으므로 문서 계약이 바뀐다. `OAuthAuthorizationStart.expiresInSeconds`
+는 `@get:JvmName` 과 무관하게 이 경로로만 어긋났다 — 그래서 팬텀 필드만 고쳐서는 부족했다.
+
+## 영향
+
+프론트·모바일이 Swagger 를 보고 `isAutoLogin` 을 보내면 **서버는 조용히 무시**한다.
+`required` 표기는 실제로는 선택 필드인 값을 필수로 광고한다. 순수 언어 전환 PR 이
+"JSON 계약을 보존했다"고 주장하려면 **문서 계약도 같이 봐야 한다**는 것이 이 사례의 교훈이다.
+
+## 어떻게 고쳤나 (최소 수정)
+
+- 요청 DTO 3개 프로퍼티에 `@get:JsonProperty` 추가 — 이미 문서화돼 있던 규칙을 일관 적용한 것뿐이다.
+- 자동 required 승격이 일어난 4개 프로퍼티에 `@get:Schema(requiredMode = NOT_REQUIRED)` 추가.
+- **런타임 동작·JVM 시그니처·검증 어노테이션은 건드리지 않았다.** 호출부·service·controller 변경 0줄.
+
+### 선택하지 않은 대안
+
+| 대안 | 버린 이유 |
+|---|---|
+| 프로퍼티를 nullable(`Boolean?`)로 바꿔 required 회피 | JVM 시그니처가 primitive `boolean` → `Boolean` 으로 바뀐다. 언어 전환 PR 이 지켜야 할 것을 정면으로 깬다 |
+| `@get:Schema(hidden = true)` 로 팬텀 getter 숨기기 | 정상 프로퍼티까지 함께 사라진다(같은 프로퍼티로 합쳐지기 때문) |
+| springdoc 전역 설정으로 Kotlin nullability 추론 끄기 | `application.yml` 은 공용 설정 — 팀장 영역이고 전 도메인에 영향이 간다 |
+| `@field:Schema` / `@param:Schema` | getter 쪽에서 생기는 문제라 자리가 맞지 않는다 |
+
+## 검증 방법
+
+`AuthOpenApiContractTest` — MockMvc 로 `/v3/api-docs` 를 실제로 받아 auth schema 11개의
+프로퍼티 이름 집합·`required`·`readOnly`/`writeOnly` 를 전환 전 실측값과 대조한다(16건).
+전체 JSON snapshot 은 쓰지 않는다 — 무관한 정렬·추가로 깨지기 때문이다. develop 서버가 떠 있을 필요도 없다.
+
+**음성 대조를 반드시 했다** — `@get:JsonProperty`/`@get:Schema` 를 다시 떼고 돌리면 16건 중 8건이
+`LoginRequest: [isAutoLogin]`, `autoLogin` writeOnly 등 정확한 진단과 함께 실패한다.
+어노테이션을 붙였다는 사실이 아니라 **생성된 문서**가 판단 기준이다.
