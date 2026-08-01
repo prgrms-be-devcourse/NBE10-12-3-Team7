@@ -1113,3 +1113,88 @@ springdoc 은 Kotlin 의 non-null 프로퍼티를 `required` 로 올린다. 원�
 **음성 대조를 반드시 했다** — `@get:JsonProperty`/`@get:Schema` 를 다시 떼고 돌리면 16건 중 8건이
 `LoginRequest: [isAutoLogin]`, `autoLogin` writeOnly 등 정확한 진단과 함께 실패한다.
 어노테이션을 붙였다는 사실이 아니라 **생성된 문서**가 판단 기준이다.
+
+---
+
+# PR B — 영속성 entity·JPA repository (2단계)
+
+대상 7개: entity 3(`EmailVerification`·`MemberSocialAccount`·`RefreshToken`)
++ JPA repository 4(`EmailVerificationRepository`·`MemberSocialAccountRepository`
+·`RefreshTokenJpaEntityRepository`·`JpaRefreshTokenRepository`).
+
+기준선은 PR #76 이 병합된 `origin/develop`(`9c5ec8f`). 1단계와 같은 방식으로 변환 전 `javap -p` 를 저장해 두고
+변환 후 대조했다.
+
+## 영속성 entity — 세 가지 제약이 동시에 걸린다
+
+| 제약 | 왜 | 어기면 |
+|---|---|---|
+| 클래스·getter 가 `final` 이면 안 된다 | Hibernate 지연 로딩 프록시가 엔티티를 **상속**해 만들어진다 | `MemberSocialAccount.member`(LAZY) 초기화 실패 |
+| 참조형 필드를 non-null 로 조이면 안 된다 | `Long` → primitive `long` 으로 바뀐다 | 아직 Java 인 호출부에서 자동 언박싱 NPE |
+| 컬럼·테이블·제약 이름이 바뀌면 안 된다 | Flyway 스키마와 `ddl-auto=validate` 가 그대로다 | 기동 시점 스키마 불일치 |
+
+setter 는 `protected` 로 뒀다. `build.gradle` 의 allOpen 이 프로퍼티까지 open 으로 만들어 Kotlin 이
+open 프로퍼티의 private setter 를 금지하기 때문이며, `BaseTimeEntity` 가 이미 같은 이유로 같은 선택을 해뒀다.
+원본에 없던 `protected setXxx()` 가 생기지만 **public 표면은 넓어지지 않는다**(테스트로 고정).
+
+## `EmailVerification.verified` — 이름 두 개가 동시에 필요했던 자리 🔴
+
+한 프로퍼티에 서로 다른 두 계약이 걸려 있었다.
+
+| 무엇이 | 어떤 이름을 요구하나 | 근거 |
+|---|---|---|
+| Spring Data 파생 쿼리 | 속성명 **`verified`** | `EmailVerificationRepository.existsByEmailAndVerifiedTrue` 가 속성명으로 해석된다 |
+| Java 호출부 | getter **`isVerified()`** | `EmailVerificationServiceTest` 가 그대로 호출한다 |
+
+Kotlin 은 `val verified` 의 getter 를 `getVerified()` 로 만든다. 그래서 `@get:JvmName("isVerified")` 를 붙였고,
+Kotlin 이 `@JvmName` 을 open 멤버에 금지하므로 **이 프로퍼티만 `final`** 이다.
+
+*버린 대안* — 프로퍼티 이름을 `isVerified` 로 바꾸기. getter 는 자연스럽게 `isVerified()` 가 되지만
+**파생 쿼리가 속성 `verified` 를 찾지 못해 애플리케이션 기동이 깨진다.** 컬럼 이름도 `is_verified` 로 바뀐다.
+이름을 바꾸는 우회는 언제나 다른 계약을 건드린다는 점이 1단계 `@get:JvmName` 사례와 같다.
+
+이 프로퍼티의 finality 가 안전한 이유는 **`EmailVerification` 을 지연 로딩 프록시로 받는 연관관계가 없기** 때문이다.
+`MemberSocialAccount.member` 처럼 프록시 대상인 자리에는 `@JvmName` 을 쓰지 않았다.
+
+## 실제로 잡은 회귀 — `Long` 이 primitive 로 바뀜 🔴
+
+`RefreshTokenJpaEntityRepository` 를 처음엔 파라미터를 non-null `Long` 으로 옮겼다.
+**컴파일도 통과하고 기존 테스트도 전부 통과했다.** 그런데 `javap` 비교에서 드러났다.
+
+```
+- public abstract Optional<RefreshToken> findByMemberId(java.lang.Long);
++ public abstract Optional<RefreshToken> findByMemberId(long);
+```
+
+descriptor 가 `(Ljava/lang/Long;)` → `(J)` 로 바뀌었다. 아직 Java 인 호출부가 `null` 을 넘기면
+자동 언박싱 NPE 가 난다. `Long?` 로 되돌려 원본과 완전히 일치시켰다.
+**1단계 `oidcNonce` 와 정확히 같은 계열의 함정**이고, 역시 테스트가 아니라 시그니처 비교로만 잡혔다.
+
+## repository — 바꾸지 않은 것
+
+`Optional` 반환, `List` 반환, JPQL 문자열, `@Param` 이름, 상속 구조, 제네릭 타입을 전부 그대로 뒀다.
+`@Param` 은 `@Target` 에 PARAMETER 만 있어 use-site target 없이도 파라미터에 붙는다.
+`JpaRefreshTokenRepository` 가 구현하는 `RefreshTokenRepository` 는 아직 Java 인터페이스(3단계 대상)라,
+파라미터를 원본 참조형에 맞춰 nullable 로 선언했다.
+
+## 검증 방법
+
+계약별로 테스트 파일을 나눴다 — 실패했을 때 원인이 바로 보이게 하기 위해서다.
+
+| 파일 | 무엇을 고정하나 |
+|---|---|
+| `AuthPersistenceJvmSurfaceTest` | JVM 시그니처·생성자 가시성·finality·JPA 어노테이션 값(리플렉션) |
+| `AuthPersistenceMappingTest` | 실제 Hibernate 컨텍스트 부팅·저장/조회·파생 쿼리·enum 저장·LAZY 프록시 |
+
+`AuthPersistenceMappingTest` 는 `@DataJpaTest` 슬라이스라 `JpaAuditingConfig` 가 자동으로 포함되지 않는다.
+`@Import` 로 명시해야 `BaseTimeEntity.createdAt` 이 채워진다(전환 문제가 아니라 슬라이스 범위 문제).
+
+## 남은 허용 차이
+
+| 분류 | 항목 | 왜 남는가 |
+|---|---|---|
+| Kotlin 구조 필수 | `protected setXxx()` 3~4개/엔티티 | allOpen + open 프로퍼티 제약. public 표면은 불변 |
+| Kotlin 필수 synthetic | `DefaultConstructorMarker` 생성자 | `ACC_SYNTHETIC` 확인 — Java 소스에서 호출 불가 |
+| 언어 제약 | `@JvmStatic` 팩토리가 `public static final` | Kotlin 이 항상 `ACC_FINAL` 을 붙인다. static 은 오버라이드 대상이 아니라 의미상 차이 없음 |
+| 언어 제약 | `EmailVerification.isVerified()` 가 `final` | `@JvmName` 과 `open` 병용 금지. 프록시 대상 아님을 확인함 |
+| Kotlin 구조 | `Companion` 필드 | additive |
