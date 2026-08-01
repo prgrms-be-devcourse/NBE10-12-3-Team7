@@ -40,7 +40,7 @@ class EmailVerificationService(
     private val secureRandom = SecureRandom()
 
     fun requestVerification(request: EmailVerificationRequest): EmailVerificationResponse {
-        val email = requireNotNullEmail(request.email)
+        val email = request.email
         if (memberRepository.existsByEmail(email)) {
             throw BusinessException(ErrorCode.DUPLICATE_EMAIL)
         }
@@ -55,7 +55,7 @@ class EmailVerificationService(
         val code = generateCode()
         emailVerificationCodeRepository.save(email, code, ttl)
         // 새 코드를 발급했으니 이전 인증 상태(있었다면)는 무효화 — 새 코드에 대해 다시 인증해야 한다.
-        emailVerificationRepository.findByEmail(email).ifPresent { it.unverify() }
+        emailVerificationRepository.findByEmail(email!!).ifPresent { it.unverify() }
 
         emailSender.send(email, "[마켓온] 이메일 인증 코드 안내", buildVerificationEmailBody(code))
 
@@ -76,8 +76,8 @@ class EmailVerificationService(
      * 그대로 성공을 반환한다(멱등).
      */
     fun confirmVerification(request: EmailVerificationConfirmRequest): EmailVerificationConfirmResponse {
-        val email = requireNotNullEmail(request.email)
-        if (emailVerificationRepository.existsByEmailAndVerifiedTrue(email)) {
+        val email = request.email
+        if (emailVerificationRepository.existsByEmailAndVerifiedTrue(email!!)) {
             return EmailVerificationConfirmResponse(email, true)
         }
 
@@ -100,13 +100,6 @@ class EmailVerificationService(
 
         return EmailVerificationConfirmResponse(email, true)
     }
-
-    /**
-     * DTO 의 `email` 은 `@NotBlank` 로 컨트롤러 경계에서 이미 검증되지만, 1단계에서 DTO 를 옮길 때
-     * 원본 Java 필드가 참조형이라 nullable 로 유지했다. 여기서 non-null 로 좁힌다 —
-     * 원본도 null 이면 발송 시점에 실패했으므로 "null 을 정상 처리하지 않는다"는 계약은 같다.
-     */
-    private fun requireNotNullEmail(email: String?): String = email ?: throw BusinessException(ErrorCode.INVALID_INPUT_VALUE)
 
     private fun generateCode(): String = String.format("%06d", secureRandom.nextInt(1_000_000))
 

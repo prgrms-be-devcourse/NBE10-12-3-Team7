@@ -1381,13 +1381,31 @@ Redis key·TTL·Lua 원자성은 기존 Testcontainers 통합 테스트가 이�
 
 **실제 SMTP 발송은 하지 않았다.** 기존 mock 기반 테스트가 발송 호출을 검증한다.
 
-## 허용 차이 — `EmailVerificationService` 의 email nullability
+## 두 번째 회귀 — `EmailVerificationService` 의 null 계약 🔴
 
-DTO 의 `email` 은 `@NotBlank` 로 컨트롤러 경계에서 검증되지만, 1단계에서 DTO 를 옮길 때 원본 Java 필드가
-참조형이라 nullable 로 유지했다. 서비스 안에서 non-null 로 좁히는 헬퍼(`requireNotNullEmail`)를 뒀다.
-원본도 `null` 이면 발송 시점에 실패했으므로 **"null 을 정상 처리하지 않는다"는 계약은 같지만**,
-실패 시점이 발송 직전에서 진입 직후로 앞당겨지고 예외 종류가 NPE 에서 `INVALID_INPUT_VALUE` 로 바뀐다.
-검증을 통과한 정상 요청에서는 도달할 수 없는 경로다.
+초안에서 `email` 을 메서드 진입 직후 non-null 로 좁히는 가드를 넣었다. 그 결과 **실패 시점과 예외 종류가
+함께 바뀌었다** — 원본은 첫 역참조 지점에서 NPE 였는데 진입 직후 `INVALID_INPUT_VALUE` 가 됐다.
+정상 API 요청(`@NotBlank` 통과)에서는 도달하지 않는 경로지만, **Java 에서 이 서비스를 직접 호출하는
+런타임 계약**까지 보존해야 순수 언어 전환이므로 되돌렸다.
+
+원본(`0a5af2d`)의 null 경로를 다시 확인해 맞췄다.
+
+| 메서드 | 실패 전 실행되는 것 | 첫 실패 지점 | 실행되지 않는 것 |
+|---|---|---|---|
+| `requestVerification` | `existsByEmail(null)`(읽기) | `getRemainingTtl(null)` — `ConcurrentHashMap` 이 null 키 거부 → **NPE** | 코드 저장·인증상태 무효화·메일 발송 |
+| `confirmVerification` | `existsByEmailAndVerifiedTrue(null)`(읽기) | `findCode(null)` → **NPE** | 코드 삭제·인증상태 반영·메일 발송 |
+
+복원 방식 — 파라미터·지역 변수를 nullable `String?` 로 되돌리고, **Kotlin 타입 시스템이 non-null 을
+요구하는 지점에만** `!!` 를 뒀다. 임의 기본값도, `INVALID_INPUT_VALUE` 신규 매핑도 없다.
+두 메서드 모두 **실패 전 쓰기 작업이 0건**이라 트랜잭션 rollback 후 남는 상태도 원본과 같다.
+
+남은 미세 차이 — `confirmVerification` 의 `existsByEmailAndVerifiedTrue` 는 2단계에서 파라미터를
+non-null 로 옮겨둔 상태라 `!!` 가 그 호출 **직전**에 평가된다. 원본은 이 읽기를 한 번 수행한 뒤
+다음 줄에서 NPE 가 났다. **예외 종류·쓰기 부수효과(0건)·rollback 결과는 동일**하고, JPA 읽기 한 번의
+실행 여부만 다르다. 그 저장소는 2단계 담당 파일이라 이번 단계에서 건드리지 않았다.
+
+`validateAndGetMemberId` 의 boxed `Long` 회귀와는 **별개의 두 번째 실제 회귀**다.
+둘 다 계약 테스트(`AuthSupportServiceJvmSurfaceTest`·`EmailVerificationNullContractTest`)로 고정했다.
 
 ## 검증
 
