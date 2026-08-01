@@ -23,7 +23,6 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
 import org.springframework.data.domain.Sort
 import org.springframework.test.context.ActiveProfiles
-import org.springframework.test.context.TestPropertySource
 import java.math.BigDecimal
 
 /**
@@ -35,11 +34,6 @@ import java.math.BigDecimal
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(JpaAuditingConfig::class)
-@TestPropertySource(
-    properties = [
-        "spring.datasource.url=jdbc:h2:mem:product_repository_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
-    ],
-)
 class ProductRepositoryTest {
     @Autowired
     lateinit var productRepository: ProductRepository
