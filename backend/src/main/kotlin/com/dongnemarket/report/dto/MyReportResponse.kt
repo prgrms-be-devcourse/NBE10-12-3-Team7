@@ -10,7 +10,7 @@ import java.time.LocalDateTime
 data class MyReportResponse private constructor(
     val reportId: Long?,
     val reportType: ReportType,
-    val targetId: Long,
+    val targetId: Long?,
     val reason: ReportReason,
     val content: String?,
     val status: ReportStatus,
@@ -34,5 +34,5 @@ data class MyReportResponse private constructor(
 }
 
 /** 신고 대상 id — 상품 신고는 대상 상품 id, 회원 신고는 대상 회원 id. Report.resolveTargetMemberId()(매너온도 반영 대상)와는 다른 값이다. */
-private val Report.targetId: Long
+private val Report.targetId: Long?
     get() = if (reportType == ReportType.PRODUCT) targetProduct!!.id else targetMember!!.id

@@ -49,7 +49,7 @@ class EscrowService(
         if (product.tradeStatus != TradeStatus.ON_SALE) {
             throw BusinessException(ErrorCode.PRODUCT_NOT_ON_SALE)
         }
-        if (escrowRepository.existsByProductIdAndStatus(product.id, EscrowStatus.IN_ESCROW)) {
+        if (escrowRepository.existsByProductIdAndStatus(productId, EscrowStatus.IN_ESCROW)) {
             throw BusinessException(ErrorCode.ESCROW_ALREADY_EXISTS)
         }
 

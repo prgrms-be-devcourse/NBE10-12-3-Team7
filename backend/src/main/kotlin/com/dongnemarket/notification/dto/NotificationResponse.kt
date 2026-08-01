@@ -15,7 +15,7 @@ import java.time.LocalDateTime
 data class NotificationResponse private constructor(
     val type: NotificationFeedType,
     val message: String,
-    val productId: Long,
+    val productId: Long?,
     // 채팅 알림에서만 세팅(해당 방으로 이동). 댓글 알림은 null.
     val roomId: Long?,
     // boolean 프로퍼티의 기본 직렬화 키("read") 대신 설계상 명시 키 "isRead"로 노출한다.
@@ -42,7 +42,7 @@ data class NotificationResponse private constructor(
         @JvmStatic
         fun chat(
             message: String,
-            productId: Long,
+            productId: Long?,
             roomId: Long,
             occurredAt: LocalDateTime,
         ): NotificationResponse = NotificationResponse(NotificationFeedType.CHAT, message, productId, roomId, false, occurredAt)

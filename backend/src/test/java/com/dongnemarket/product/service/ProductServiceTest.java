@@ -3,6 +3,7 @@ package com.dongnemarket.product.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -110,7 +111,7 @@ class ProductServiceTest {
 			assertThat(response.getRegionName()).isEqualTo("역삼동");
 			assertThat(response.getRegionFullName()).isEqualTo("서울특별시 강남구 역삼동");
 			assertThat(response.getViewCount()).isZero();
-			assertThat(response.isHidden()).isFalse();
+			assertThat(response.getHidden()).isFalse();
 		}
 
 		@Test
@@ -201,7 +202,7 @@ class ProductServiceTest {
 
 				assertThat(response.getItems()).extracting(ProductSummaryResponse::getTitle)
 						.containsExactly("최신 상품", "오래된 상품");
-				assertThat(response.isHasNext()).isFalse();
+				assertThat(response.getHasNext()).isFalse();
 				assertThat(response.getNextCursor()).isNull();
 				verify(productRepository).findBy(anyProductSpecification(), any());
 			}
@@ -219,7 +220,7 @@ class ProductServiceTest {
 
 				assertThat(response.getItems()).extracting(ProductSummaryResponse::getProductId)
 						.containsExactly(3L, 2L);
-				assertThat(response.isHasNext()).isTrue();
+				assertThat(response.getHasNext()).isTrue();
 				assertThat(response.getNextCursor()).isEqualTo(2L);
 			}
 
@@ -234,7 +235,7 @@ class ProductServiceTest {
 
 				assertThat(response.getItems()).extracting(ProductSummaryResponse::getProductId)
 						.containsExactly(1L);
-				assertThat(response.isHasNext()).isFalse();
+				assertThat(response.getHasNext()).isFalse();
 				assertThat(response.getNextCursor()).isNull();
 			}
 
@@ -250,7 +251,7 @@ class ProductServiceTest {
 				ProductPageResponse response = productService.getProducts(null, null, 0);
 
 				assertThat(response.getItems()).hasSize(30);
-				assertThat(response.isHasNext()).isTrue();
+				assertThat(response.getHasNext()).isTrue();
 			}
 
 			@Test
@@ -265,7 +266,7 @@ class ProductServiceTest {
 				ProductPageResponse response = productService.getProducts(null, null, 101);
 
 				assertThat(response.getItems()).hasSize(100);
-				assertThat(response.isHasNext()).isTrue();
+				assertThat(response.getHasNext()).isTrue();
 			}
 
 			@Test
@@ -360,9 +361,9 @@ class ProductServiceTest {
 
 			assertThat(responses).hasSize(2);
 			assertThat(responses.get(0).getTitle()).isEqualTo("숨김 내 상품");
-			assertThat(responses.get(0).isHidden()).isTrue();
+			assertThat(responses.get(0).getHidden()).isTrue();
 			assertThat(responses.get(1).getTitle()).isEqualTo("오래된 내 상품");
-			assertThat(responses.get(1).isHidden()).isFalse();
+			assertThat(responses.get(1).getHidden()).isFalse();
 		}
 
 		@Test
@@ -384,7 +385,7 @@ class ProductServiceTest {
 					ErrorCode.UNAUTHORIZED
 			);
 
-			verify(productRepository, never()).findAllByMemberIdAndDeletedAtIsNullOrderByIdDesc(any());
+			verify(productRepository, never()).findAllByMemberIdAndDeletedAtIsNullOrderByIdDesc(anyLong());
 		}
 	}
 
@@ -774,7 +775,7 @@ class ProductServiceTest {
 					ErrorCode.INVALID_INPUT_VALUE
 			);
 
-			verify(productImageRepository, never()).deleteAllByProductId(any());
+			verify(productImageRepository, never()).deleteAllByProductId(anyLong());
 		}
 	}
 
@@ -997,17 +998,17 @@ class ProductServiceTest {
 		@Test
 		@DisplayName("접근 가능한 상품이면 검증을 통과한다")
 		void validatesAccessibleProduct() {
-			given(productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(PRODUCT_ID)).willReturn(true);
+			given(productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(PRODUCT_ID)).willReturn(true);
 
 			productService.validateAccessibleProduct(PRODUCT_ID);
 
-			verify(productRepository).existsByIdAndDeletedAtIsNullAndHiddenFalse(PRODUCT_ID);
+			verify(productRepository).existsByIdAndDeletedAtIsNullAndIsHiddenFalse(PRODUCT_ID);
 		}
 
 		@Test
 		@DisplayName("존재하지 않는 상품이면 접근 가능한 상품으로 인정하지 않는다")
 		void throwsProductNotFoundWhenValidatingMissingProduct() {
-			given(productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(PRODUCT_ID)).willReturn(false);
+			given(productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(PRODUCT_ID)).willReturn(false);
 
 			assertInaccessibleProduct();
 		}
@@ -1015,7 +1016,7 @@ class ProductServiceTest {
 		@Test
 		@DisplayName("삭제된 상품이면 접근 가능한 상품으로 인정하지 않는다")
 		void throwsProductNotFoundWhenValidatingDeletedProduct() {
-			given(productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(PRODUCT_ID)).willReturn(false);
+			given(productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(PRODUCT_ID)).willReturn(false);
 
 			assertInaccessibleProduct();
 		}
@@ -1023,7 +1024,7 @@ class ProductServiceTest {
 		@Test
 		@DisplayName("숨김 상품이면 접근 가능한 상품으로 인정하지 않는다")
 		void throwsProductNotFoundWhenValidatingHiddenProduct() {
-			given(productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(PRODUCT_ID)).willReturn(false);
+			given(productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(PRODUCT_ID)).willReturn(false);
 
 			assertInaccessibleProduct();
 		}

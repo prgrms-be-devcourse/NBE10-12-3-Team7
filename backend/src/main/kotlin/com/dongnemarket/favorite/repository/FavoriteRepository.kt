@@ -30,7 +30,7 @@ interface FavoriteRepository : JpaRepository<Favorite, Long> {
             "JOIN FETCH f.product p " +
             "JOIN FETCH p.category " +
             "WHERE f.member.id = :memberId " +
-            "AND p.deletedAt IS NULL AND p.hidden = false " +
+            "AND p.deletedAt IS NULL AND p.isHidden = false " +
             "ORDER BY f.createdAt DESC, f.id DESC",
     )
     fun findMyFavoritesWithProduct(
