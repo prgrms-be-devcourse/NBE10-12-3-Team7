@@ -1198,3 +1198,71 @@ descriptor 가 `(Ljava/lang/Long;)` → `(J)` 로 바뀌었다. 아직 Java 인 
 | 언어 제약 | `@JvmStatic` 팩토리가 `public static final` | Kotlin 이 항상 `ACC_FINAL` 을 붙인다. static 은 오버라이드 대상이 아니라 의미상 차이 없음 |
 | 언어 제약 | `EmailVerification.isVerified()` 가 `final` | `@JvmName` 과 `open` 병용 금지. 프록시 대상 아님을 확인함 |
 | Kotlin 구조 | `Companion` 필드 | additive |
+
+---
+
+# PR C — 저장소 구현 (3단계)
+
+대상 14개: 추상화 5(`EmailVerificationCodeRepository`·`LoginAttemptRepository`·`OAuthStateRepository`
+·`PasswordResetTokenRepository`·`RefreshTokenRepository`) + Redis 구현 5 + InMemory 구현 4.
+이로써 **`auth/repository` 패키지의 Java 파일이 0개**가 됐다. 기준선은 PR #78 병합본(`6d3cdac`).
+
+## 이 계층에서 조용히 깨지는 것
+
+| 무엇이 | 어떻게 | 대응 |
+|---|---|---|
+| 참조형 파라미터 | non-null 로 조이면 `Long` → primitive `long` | 원본 참조형은 전부 nullable 유지 |
+| `Optional` 반환 | Kotlin nullable 로 바꾸면 Java 호출부의 `.orElseThrow()` 가 깨짐 | `Optional` 그대로 |
+| `@Profile` | 빠지면 test 에서 Redis 를, 운영에서 InMemory 를 잡는다 | 어노테이션 값까지 테스트로 고정 |
+| Redis key·TTL·Lua | 한 글자만 달라도 저장 형식이 바뀐다 | **문자열을 그대로 복사**하고 기존 Testcontainers 테스트로 확인 |
+
+## Redis 구현 — 바꾸지 않은 저장 계약
+
+key prefix 5종(`auth:email:verify:` · `auth:login:fail:` · `auth:refresh:` ·
+`auth:password:reset:member:` · `auth:password:reset:token:`)과 OAuth state 의
+Hash/ZSET key(`auth:oauth:state:{state}` · `auth:oauth:bcid:{bch}:states`), Lua 스크립트 두 개의
+본문·ARGV 순서·Hash 필드 이름을 **그대로 옮겼다.**
+
+특히 유지해야 했던 순서 의존 두 가지:
+- `INCR` 결과가 **정확히 1일 때만** `EXPIRE` — 매번 걸면 윈도우가 연장돼 차단이 풀리지 않는다.
+- 비밀번호 재설정은 member 키 먼저, token 키 나중에 **같은 TTL** 로 저장.
+
+상수는 `private const val` 로 companion object 에 뒀다. 원본이 `private static final` 이라
+외부 접근 경로가 없어 Java 표면에 영향이 없다(반대로 **public 상수였다면** `const val`/`@JvmField` 로
+접근 경로를 맞춰야 했다).
+
+## InMemory 구현 — 유지한 동시성·만료 계약
+
+`ConcurrentHashMap` + 메서드 단위 `synchronized` 를 그대로 뒀다(Kotlin 은 `@Synchronized` 로
+같은 `ACC_SYNCHRONIZED` 를 만든다). 조회 시점 lazy 만료, 최초 실패에만 윈도우를 잡는 정책,
+`InMemoryPasswordResetTokenRepository.clear()` 의 **public 가시성**(테스트 격리용 고유 API)도 유지했다.
+
+`InMemoryOAuthStateRepository.consume` 의 **"만료면 삭제 후 empty / 불일치면 삭제하지 않고 empty"** 구분은
+보안 계약이다 — 불일치일 때 삭제해 버리면 공격자가 정상 state 를 소모시킬 수 있다. 테스트로 고정했다.
+
+## 전환 중 실제로 부딪힌 것
+
+| # | 증상 | 원인 | 처리 |
+|---|---|---|---|
+| 1 | `browserCorrelationHash()` 등이 "cannot be invoked as a function" | `OAuthAuthorizationState` 는 1단계에서 Kotlin `@JvmRecord data class` 가 됐다. **Java 에서는 `x()` , Kotlin 에서는 `x`** 로 접근한다 | Kotlin 접근자 문법으로 수정. JVM 표면은 그대로 |
+| 2 | `value.provider.name` 타입 불일치 | record 컴포넌트가 원본 Java 와 동일하게 nullable | 원본이 NPE 였던 경로라 `!!` 로 같은 의미 유지 |
+
+두 건 모두 **1단계 결과 위에서만 나타나는 상호작용**이라, 단계별 전환에서 앞 단계 산출물의
+Kotlin 접근 방식을 확인해야 한다는 사례로 남긴다.
+
+## JVM 표면 비교 결과
+
+14개 중 **9개는 public 표면 완전 일치**, 나머지 5개(Redis 구현)는 `Companion` 필드 하나만 추가됐다.
+**메서드 시그니처는 14개 전부 동일**하며, Java 호출부(service 5개)를 한 줄도 고치지 않고 `compileJava` 가 통과한다.
+
+## 검증
+
+| 항목 | baseline(`6d3cdac`) | 3단계 후 |
+|---|---|---|
+| `test` | 781 / 실패 0 / skip 0 | **818 / 실패 0 / skip 0** (+37) |
+| auth | 235 | **272** (+37) |
+| `integrationTest` | 44 실행 / 43 통과 / 비활성화 1 | **동일** |
+
+신규 테스트는 `AuthStoreJvmSurfaceTest`(13건 — 시그니처·프로파일·빈 경계)와
+`AuthStoreContractTest`(24건 — TTL·덮어쓰기·consume·발급 한도)로 나눴다.
+Redis key·TTL·Lua 원자성은 기존 Testcontainers 통합 테스트가 이미 담당해 중복하지 않았다.
