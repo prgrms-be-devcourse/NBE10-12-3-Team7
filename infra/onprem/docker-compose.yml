@@ -218,6 +218,16 @@ services:
       # 경로가 다르면 compose의 상대경로 바인드 마운트(./nginx.conf 등)가 호스트에서 깨진다.
       - ${HOST_REPO_PATH:-/nonexistent}:${HOST_REPO_PATH:-/nonexistent}
 
+  # 대시보드를 PNG 로 렌더링해 파일로 남긴다. 계단마다 "그 시점의 화면"을 기록으로 보관하기 위해서다.
+  # 브라우저 스크린샷은 사람이 손으로 떠야 하고 조건이 매번 달라진다 — 이건 URL 하나로 재현된다.
+  grafana-renderer:
+    profiles: ["observability"]
+    image: grafana/grafana-image-renderer:latest
+    container_name: dongne-grafana-renderer
+    restart: unless-stopped
+    environment:
+      ENABLE_METRICS: "true"
+
   # ── profile "observability" — exporter 3종 ──
   # 대시보드는 앱·컨테이너·DB·하드웨어 네 구역을 위에서 아래로 훑도록 배치한다.
   # 앱 지표는 앱이 직접 노출하지만(actuator), 나머지 세 구역은 각각 exporter가 필요하다.
@@ -295,6 +305,8 @@ services:
     ports:
       - "3001:3000"                     # ← 3000은 next와 충돌하니 호스트는 3001로
     environment:
+      GF_RENDERING_SERVER_URL: http://grafana-renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana:3000/
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"

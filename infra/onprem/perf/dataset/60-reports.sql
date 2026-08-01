@@ -80,7 +80,9 @@ SELECT m.id, 'PRODUCT', p.id, NULL,
 FROM _seqr s
 JOIN _mem  m ON m.rn = 1 + (s.n % @m_cnt)
 JOIN _prod p ON p.rn = 1 + (s.n % @p_cnt)
-WHERE s.n <= @product_report_rows;
+-- 상품 수보다 많이 만들면 (신고자, 상품) 쌍이 반복돼 유니크 위반이 난다.
+-- 계단이 작을 때(상품 1만) 특히 걸리므로 상품 수로 상한을 건다.
+WHERE s.n <= LEAST(@product_report_rows, @p_cnt);
 
 -- ── 3. 회원 신고 분산 ───────────────────────────────────────────────────────
 -- 회원이 500명뿐이라 (신고자, 대상) 쌍을 몫과 나머지로 갈라야 겹치지 않는다.

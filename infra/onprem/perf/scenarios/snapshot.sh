@@ -34,10 +34,16 @@ require_stack
 # (products/page.tsx). 그래서 프로브에 넣지 않는다.
 #
 # ID·지역코드는 데이터에 따라 달라지므로 env로 덮어쓸 수 있게 둔다.
-PROBE_REGION="${PROBE_REGION:-1111010300}"   # 상품이 가장 많은 동네
-PROBE_HOT_ID="${PROBE_HOT_ID:-6108}"         # 조회수 최상위 — 같은 row UPDATE 경합 구간
-PROBE_ID="${PROBE_ID:-134}"                  # 일반 상품
-PROBE_CURSOR="${PROBE_CURSOR:-26516}"        # 스크롤을 한참 내린 상태
+# id 를 하드코딩하지 않는다. 계단마다 데이터를 지우고 다시 넣으면 id 가 바뀌어 404 가 난다
+# (실제로 겪었다). 매번 DB 에서 현재 값을 찾는다.
+PROBE_REGION="${PROBE_REGION:-$(mysql_q "select r.code from products p join regions r on r.id=p.region_id group by r.code order by count(*) desc limit 1;")}"
+PROBE_HOT_ID="${PROBE_HOT_ID:-$(mysql_q "select id from products where title like '[perf]%' order by view_count desc limit 1;")}"
+PROBE_ID="${PROBE_ID:-$(mysql_q "select id from products where title like '[perf]%' order by id limit 1;")}"
+PROBE_CURSOR="${PROBE_CURSOR:-$(mysql_q "select id from products where title like '[perf]%' order by id desc limit 1 offset 100;")}"
+
+for v in PROBE_REGION PROBE_HOT_ID PROBE_ID PROBE_CURSOR; do
+  [ -n "${!v}" ] || { echo "✗ $v 를 DB 에서 찾지 못했다. 볼륨 데이터가 적재돼 있는지 확인할 것" >&2; exit 1; }
+done
 
 declare -a NAMES=(list_first list_region list_deep detail_hot comments)
 declare -a PATHS=(
@@ -79,8 +85,10 @@ measure() {
   for ((i = 0; i < SAMPLES; i++)); do
     read -r t code <<< "$(curl -s -o /dev/null -w '%{time_total} %{http_code}' ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$BASE_URL$path")"
     if [ "$code" != "200" ]; then
+      # $( ) 안이라 여기서 exit 해도 서브셸만 끝난다. 호출한 쪽이 알아채도록 표식을 남긴다.
       echo "✗ $path 가 HTTP $code — 측정 중단. 동시에 도는 트래픽이 있는지 확인할 것" >&2
-      exit 1
+      echo "FAIL"
+      return 1
     fi
     times+=("$t")
   done
@@ -105,7 +113,9 @@ note "DB ${db_mib} MiB / 버퍼풀 ${pool_mib} MiB · 히트율 ${hit}%"
 
 ep_json=""
 for i in "${!NAMES[@]}"; do
-  read -r med min max <<< "$(measure "${PATHS[$i]}")"
+  out="$(measure "${PATHS[$i]}")"
+  [ "$out" = "FAIL" ] && { echo "✗ ${NAMES[$i]} 측정 실패 — 기록하지 않고 중단한다" >&2; exit 1; }
+  read -r med min max <<< "$out"
   note "$(printf '%-9s 중앙 %8s ms   (최소 %s / 최대 %s)' "${NAMES[$i]}" "$med" "$min" "$max")"
   [ -n "$ep_json" ] && ep_json="$ep_json,"
   ep_json="$ep_json\"${NAMES[$i]}\":{\"path\":\"${PATHS[$i]}\",\"median_ms\":$med,\"min_ms\":$min,\"max_ms\":$max}"
@@ -128,7 +138,9 @@ AUTH_HEADER="Authorization: Bearer $token"
 SAVED_SAMPLES=$SAMPLES
 SAMPLES=$ADMIN_SAMPLES
 for i in "${!ADMIN_NAMES[@]}"; do
-  read -r med min max <<< "$(measure "${ADMIN_PATHS[$i]}")"
+  out="$(measure "${ADMIN_PATHS[$i]}")"
+  [ "$out" = "FAIL" ] && { echo "✗ ${ADMIN_NAMES[$i]} 측정 실패 — 기록하지 않고 중단한다" >&2; exit 1; }
+  read -r med min max <<< "$out"
   note "$(printf '%-16s 중앙 %8s ms   (최소 %s / 최대 %s)' "${ADMIN_NAMES[$i]}" "$med" "$min" "$max")"
   ep_json="$ep_json,\"${ADMIN_NAMES[$i]}\":{\"path\":\"${ADMIN_PATHS[$i]}\",\"median_ms\":$med,\"min_ms\":$min,\"max_ms\":$max,\"auth\":true}"
 done
