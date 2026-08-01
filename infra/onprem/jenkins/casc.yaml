@@ -25,7 +25,7 @@ unclassified:
 jobs:
   - script: >
       pipelineJob('dongnemarket-onprem-cd') {
-        description('develop push 감지 → 이미지 빌드 → Zot push → 온프레미스 스택 재기동')
+        description('${JENKINS_TRACK_BRANCH} push 감지 → 이미지 빌드 → Zot push → 온프레미스 스택 재기동')
         triggers {
           scm('H/2 * * * *')
         }
@@ -34,7 +34,7 @@ jobs:
             scm {
               git {
                 remote { url('https://github.com/prgrms-be-devcourse/NBE10-12-3-Team7.git') }
-                branch('*/develop')
+                branch("*/${JENKINS_TRACK_BRANCH}")
               }
             }
             scriptPath('Jenkinsfile')

@@ -25,5 +25,5 @@ ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false -Xmx768m"
 ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc.yaml
 
 # root 유지: /var/run/docker.sock 은 호스트에서 root 소유라 jenkins 유저로는 열 수 없다.
-# 이 컨테이너가 사실상 호스트 root 권한을 갖는다는 뜻이다(../onprem-modernization.md 보안 항목 참고).
+# 이 컨테이너가 사실상 호스트 root 권한을 갖는다는 뜻이다(../../infra.md 의 CI/CD 항목 참고).
 USER root
