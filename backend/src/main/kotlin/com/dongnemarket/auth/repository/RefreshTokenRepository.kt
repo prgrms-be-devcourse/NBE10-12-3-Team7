@@ -17,7 +17,7 @@ interface RefreshTokenRepository {
     fun findByMemberId(memberId: Long?): Optional<RefreshToken>
 
     /** 이미 같은 memberId 의 row/키가 있으면 교체하고, 없으면 새로 만든다(upsert). */
-    fun save(refreshToken: RefreshToken): RefreshToken
+    fun save(refreshToken: RefreshToken?): RefreshToken
 
     fun deleteByMemberId(memberId: Long?)
 }

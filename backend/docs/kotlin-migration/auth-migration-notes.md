@@ -1327,3 +1327,142 @@ Redis key·TTL·Lua 원자성은 기존 Testcontainers 통합 테스트가 이�
 없어 실행할 수 없는 외부 연동 절차다. 테스트에는 `test-kakao-client-id` 같은 명백한 dummy 값만 썼다.
 토큰 교환·사용자정보 호출의 실제 HTTP 왕복은 기존 `KakaoOAuthClientTest`·`GoogleOAuthClientTest`(MockWebServer)가
 담당하며, 이번 전환 후에도 그대로 통과한다.
+
+---
+
+# PR E — 지원 서비스·메일 (5단계)
+
+대상 5개: 지원 서비스 4(`LoginAttemptService`·`RefreshTokenService`·`EmailVerificationService`
+·`PasswordResetService`) + mail 구현 1(`SmtpEmailSender`). 기준선은 PR #82 병합본(`0a5af2d`).
+6단계 대상(`AuthService`·`OAuthSignupTransaction`)과 controller 3개는 손대지 않았다.
+
+## 이 계층에서 조용히 깨지는 것
+
+| 무엇이 | 어떻게 | 대응 |
+|---|---|---|
+| 클래스 finality | Kotlin 기본 `final` 이면 `@Transactional` CGLIB 프록시가 안 만들어져 **트랜잭션이 조용히 사라진다** | allOpen 결과를 테스트로 확인 |
+| `@Transactional` 위치 | 클래스 레벨과 메서드 레벨(readOnly)이 뒤바뀌면 읽기 전용 경계가 사라진다 | 어노테이션 값까지 테스트로 고정 |
+| 반환 타입 | boxed `Long` → primitive `long` | `Long?` 유지 (아래 회귀) |
+| 호출 순서 | 보안·정합성 계약인 자리가 있다 | 원본 순서 그대로 |
+
+## 유지한 호출 순서 (보안·정합성 계약)
+
+- `EmailVerificationService.confirmVerification` — 이미 인증됨 확인 → 코드 조회 → 문자열 일치 →
+  **코드 삭제 후** 인증 상태 반영. 삭제를 뒤로 미루면 같은 코드를 두 번 쓸 여지가 생긴다.
+- `PasswordResetService.requestReset` — `DELETED` 아님 → 로컬 로그인 가능만 통과, 쿨다운 중이면 **조용히 반환**
+  (계정 존재 여부를 응답으로 노출하지 않는다). 재요청 시 **이전 토큰을 먼저 무효화**한 뒤 새 토큰 저장.
+- `PasswordResetService.confirmReset` — 토큰 해시 조회 → 회원 조회 → 로컬 로그인 가드 → 비밀번호 변경 →
+  **tokenHash 삭제 → memberId 삭제 → refresh token 삭제**.
+- `RefreshTokenService.validateAndGetMemberId` — JWT 파싱 → refresh 타입 확인 → 저장소 조회 → 문자열 일치.
+  catch 순서(`ExpiredJwtException` 먼저)도 그대로다 — 뒤집으면 만료 토큰이 INVALID 로 매핑된다.
+- `RefreshTokenService.deleteByMemberId` — 로그아웃만 fail-open(`DataAccessException` 을 삼키고 로그만).
+  나머지는 fail-closed(try/catch 를 두지 않는 것 자체가 정책).
+
+## 실제로 잡은 회귀 — boxed `Long` → primitive `long` 🔴
+
+`validateAndGetMemberId` 를 Kotlin `Long`(non-null)으로 옮겼더니 반환 타입이 primitive `long` 이 됐다.
+
+```
+- public java.lang.Long validateAndGetMemberId(java.lang.String);
++ public long validateAndGetMemberId(java.lang.String);
+```
+
+**컴파일도 통과하고 기존 테스트 839건도 전부 통과했다** — Java 호출부(`AuthController`)가 자동 언박싱으로
+받기 때문이다. 이번에 추가한 `AuthSupportServiceJvmSurfaceTest` 가 잡아냈고 `Long?` 로 복원했다.
+1단계 `oidcNonce`·2단계 `findByMemberId`·3단계와 **같은 "참조형 → primitive 축소" 계열**이다.
+
+## 메일 계약
+
+`SmtpEmailSender` 는 발신자 표기(`마켓온 <주소>`), `SimpleMailMessage`(HTML 아님), 필드 설정 순서
+(from → to → subject → text), `MailException` → `EMAIL_SEND_FAILED` 매핑, 실패 로그에 수신자만 남기는 처리를
+그대로 유지했다. `@Async` 를 새로 붙이지 않았다(원본이 동기 발송).
+메일 제목 2종(`[마켓온] 이메일 인증 코드 안내`·`[마켓온] 비밀번호 재설정 안내`)과 본문 문자열,
+재설정 링크 형식(`{base}/password-reset?token={raw}`)도 문자열 그대로다.
+
+**실제 SMTP 발송은 하지 않았다.** 기존 mock 기반 테스트가 발송 호출을 검증한다.
+
+## 두 번째 회귀 — `EmailVerificationService` 의 null 계약 🔴
+
+초안에서 `email` 을 메서드 진입 직후 non-null 로 좁히는 가드를 넣었다. 그 결과 **실패 시점과 예외 종류가
+함께 바뀌었다** — 원본은 첫 역참조 지점에서 NPE 였는데 진입 직후 `INVALID_INPUT_VALUE` 가 됐다.
+정상 API 요청(`@NotBlank` 통과)에서는 도달하지 않는 경로지만, **Java 에서 이 서비스를 직접 호출하는
+런타임 계약**까지 보존해야 순수 언어 전환이므로 되돌렸다.
+
+원본(`0a5af2d`)의 null 경로를 다시 확인해 맞췄다.
+
+| 메서드 | 실패 전 실행되는 것 | 첫 실패 지점 | 실행되지 않는 것 |
+|---|---|---|---|
+| `requestVerification` | `existsByEmail(null)`(읽기) | `getRemainingTtl(null)` — `ConcurrentHashMap` 이 null 키 거부 → **NPE** | 코드 저장·인증상태 무효화·메일 발송 |
+| `confirmVerification` | `existsByEmailAndVerifiedTrue(null)`(읽기) | `findCode(null)` → **NPE** | 코드 삭제·인증상태 반영·메일 발송 |
+
+복원 방식 — 파라미터·지역 변수를 nullable `String?` 로 되돌리고, **Kotlin 타입 시스템이 non-null 을
+요구하는 지점에만** `!!` 를 뒀다. 임의 기본값도, `INVALID_INPUT_VALUE` 신규 매핑도 없다.
+두 메서드 모두 **실패 전 쓰기 작업이 0건**이라 트랜잭션 rollback 후 남는 상태도 원본과 같다.
+
+### 파고들어 나온 세 번째 회귀 — 2단계 repository 파라미터 nullability 누락 🔴
+
+null 경로를 복원하는 과정에서 `confirmVerification` 이 여전히 원본과 다른 순서로 실패한다는 것을 발견했다.
+`existsByEmailAndVerifiedTrue` 가 2단계 전환에서 파라미터를 non-null 로 옮겨둔 탓에 Kotlin 호출부가
+`!!` 를 강제받았고, 그래서 **첫 조회를 수행하기도 전에** 실패했다.
+
+**JVM descriptor 는 동일하다** — `(Ljava/lang/String;)Z` 그대로다. 그래서 2단계의 `javap` 비교에서
+드러나지 않았고, Java 호출부도 아무 문제 없이 컴파일됐다. **Kotlin 호출부에서만 계약이 달라지는 종류**다.
+
+2단계 repository 4개를 전수 재점검한 결과 원본 Java 참조형을 non-null 로 좁힌 파라미터가 다음과 같았다.
+
+| 파일 | 메서드 | 원본 Java | 전환 후 | 조치 |
+|---|---|---|---|---|
+| `EmailVerificationRepository` | `findByEmail` | `String` | `String` non-null | `String?` 복원 |
+| `EmailVerificationRepository` | `existsByEmailAndVerifiedTrue` | `String` | `String` non-null | `String?` 복원 |
+| `MemberSocialAccountRepository` | `findByProviderAndProviderUserIdFetchMember` | `OAuthProvider`·`String` | 둘 다 non-null | 둘 다 nullable 복원 |
+| `RefreshTokenJpaEntityRepository` | `findByMemberId`·`deleteByMemberId` | `Long` | `Long?` | 이미 정상 |
+| `JpaRefreshTokenRepository` | `findByMemberId`·`deleteByMemberId` | `Long` | `Long?` | 이미 정상 |
+| `RefreshTokenRepository`(3단계) | `save` | `RefreshToken` | non-null | `RefreshToken?` 복원 |
+| `JpaRefreshTokenRepository` | `save` | `RefreshToken` | non-null | `RefreshToken?` 복원 |
+| `RedisRefreshTokenRepository`(3단계) | `save` | `RefreshToken` | non-null | `RefreshToken?` 복원 |
+
+복원 후 `confirmVerification(null)` 의 호출 순서가 원본과 같아졌다:
+`existsByEmailAndVerifiedTrue(null)`(읽기) → `findCode(null)` → NPE.
+`requestVerification(null)` 도 `existsByEmail(null)` → `getRemainingTtl(null)` → NPE 로 동일하다.
+`emailSender.send` 에만 `!!` 가 남는데, 원본에서도 그 지점이 메일 계층에 null 을 넘기던 자리이고
+test 프로파일에서는 그 앞에서 이미 실패해 도달하지 않는다.
+
+`EmailVerificationNullContractTest` 가 Mockito `InOrder` 로 두 메서드의 조회 순서를 고정한다.
+
+**교훈** — `javap` descriptor 비교만으로는 이 회귀를 잡을 수 없다. Kotlin nullability 는 descriptor 가 아니라
+메타데이터에 실리기 때문이다. 원본이 Java 참조형이면 Kotlin 에서도 nullable 로 두는 것을 기본값으로 삼는다.
+
+`validateAndGetMemberId` 의 boxed `Long` 회귀와는 **별개의 두 번째 실제 회귀**다.
+둘 다 계약 테스트(`AuthSupportServiceJvmSurfaceTest`·`EmailVerificationNullContractTest`)로 고정했다.
+
+## 검증
+
+| 항목 | baseline(`0a5af2d`) | 5단계 후 |
+|---|---|---|
+| `test` | 839 / 실패 0 / skip 0 | **852 / 실패 0 / skip 0** (+13) |
+| auth | 293 | **306** (+13) |
+| `integrationTest` | 44 실행 / 43 통과 / 비활성화 1 | **동일** |
+
+### `RefreshTokenRepository.save` — 전수 점검의 마지막 축소
+
+repository 전수 점검에서 마지막으로 `save(RefreshToken)` 이 non-null 로 좁혀져 있는 것을 발견했다.
+추상화 1개와 구현 2개(JPA·Redis)를 **함께** 복원해야 해서 3단계 파일까지 범위에 들어왔다.
+
+**JVM descriptor 는 바뀌지 않는다** — 셋 다 `(Lcom/dongnemarket/auth/entity/RefreshToken;)L…RefreshToken;` 그대로다.
+복원한 것은 **Kotlin 호출 계약과 메서드 진입 null 검사**뿐이다.
+
+원본의 null 실패 지점을 그대로 맞췄다. Java 는 수신자를 먼저 평가한 뒤 인자를 평가한다.
+
+| 구현 | 실패 전 호출 | 첫 역참조 | 외부 저장소 쓰기 |
+|---|---|---|---|
+| `JpaRefreshTokenRepository` | 없음(`jpaRepository` 는 필드) | `refreshToken.getMemberId()` → NPE | `findByMemberId`·`save` **미호출** |
+| `RedisRefreshTokenRepository` | `opsForValue()` 1회(수신자 평가) | `key(refreshToken.getMemberId())` → NPE | `set` **미호출** |
+
+non-null 로 조여 두면 메서드 진입 null 검사가 먼저 걸려 **Redis 쪽의 `opsForValue()` 호출조차 사라진다.**
+그래서 nullable 파라미터 + 첫 역참조 위치 `!!` 조합으로 맞췄다. **두 구현 모두 null 입력 시 외부 저장소에
+쓰기 전에 실패한다.**
+
+`AuthRepositoryNullabilityContractTest`(추상화·구현체 nullability + `!!` 없는 호출 fixture + descriptor·오버로드)와
+`RefreshTokenSaveNullContractTest`(null 입력 시 interaction, 정상 저장 경로)가 이를 고정한다.
+
+이 수정은 5단계 기능 확장이 아니라 **2·3단계에서 발견되지 않았던 Kotlin nullability 호환성 수정**이다.

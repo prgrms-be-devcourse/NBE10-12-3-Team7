@@ -18,7 +18,7 @@ interface MemberSocialAccountRepository : JpaRepository<MemberSocialAccount, Lon
             "where msa.provider = :provider and msa.providerUserId = :providerUserId",
     )
     fun findByProviderAndProviderUserIdFetchMember(
-        @Param("provider") provider: OAuthProvider,
-        @Param("providerUserId") providerUserId: String,
+        @Param("provider") provider: OAuthProvider?,
+        @Param("providerUserId") providerUserId: String?,
     ): Optional<MemberSocialAccount>
 }
