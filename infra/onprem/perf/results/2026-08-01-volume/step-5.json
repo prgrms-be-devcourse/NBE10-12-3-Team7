@@ -1,0 +1,16 @@
+{
+  "step": "5",
+  "at": "2026-08-01T11:20:43Z",
+  "samples": 7,
+  "data": {
+    "products_total": 300006,
+    "products_perf": 300000,
+    "members_perf": 500,
+    "db_mib": 280.5
+  },
+  "db": {
+    "buffer_pool_mib": 128,
+    "buffer_hit_rate_pct": 99.90522712090848
+  },
+  "endpoints": { "list_first":{"path":"/api/products?size=30","median_ms":12.9,"min_ms":12.6,"max_ms":13.5},"list_region":{"path":"/api/products?size=30&regionCodes=1111010300","median_ms":170.9,"min_ms":167.6,"max_ms":175.9},"list_deep":{"path":"/api/products?size=30&cursor=1115823","median_ms":12.9,"min_ms":11.0,"max_ms":13.7},"detail_hot":{"path":"/api/products/710608","median_ms":11.8,"min_ms":10.0,"max_ms":14.7},"comments":{"path":"/api/products/704634/comments","median_ms":7.5,"min_ms":6.7,"max_ms":8.1},"admin_products":{"path":"/api/admin/products","median_ms":3944.9,"min_ms":3926.8,"max_ms":3967.5,"auth":true},"admin_members":{"path":"/api/admin/members","median_ms":9.2,"min_ms":9.0,"max_ms":9.6,"auth":true},"admin_dashboard":{"path":"/api/admin/dashboard","median_ms":58.1,"min_ms":57.6,"max_ms":58.6,"auth":true} }
+}
