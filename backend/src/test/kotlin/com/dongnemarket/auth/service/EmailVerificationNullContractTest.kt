@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.inOrder
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
@@ -78,8 +79,10 @@ class EmailVerificationNullContractTest {
         fun `실패 전까지 원본이 하던 조회는 그대로 수행한다`() {
             runCatching { service.requestVerification(EmailVerificationRequest(null)) }
 
-            verify(memberRepository).existsByEmail(null)
-            verify(codeRepository).getRemainingTtl(null)
+            val order = inOrder(memberRepository, codeRepository)
+            order.verify(memberRepository).existsByEmail(null)
+            order.verify(codeRepository).getRemainingTtl(null)
+            order.verifyNoMoreInteractions()
         }
 
         /** 원본은 이 지점 이후를 실행하지 않는다 — 코드 저장·상태 무효화가 없어야 한다. */
@@ -103,6 +106,12 @@ class EmailVerificationNullContractTest {
     @Nested
     @DisplayName("confirmVerification — null email")
     inner class ConfirmVerification {
+        @BeforeEach
+        fun stubNullKeyRejection() {
+            // 원본이 처음 실패하던 지점 재현: findCode 의 null 키가 ConcurrentHashMap 에 들어가며 NPE.
+            `when`(codeRepository.findCode(null)).thenThrow(NullPointerException())
+        }
+
         private fun call() =
             runCatching {
                 service.confirmVerification(EmailVerificationConfirmRequest(null, "test-verification-code"))
@@ -118,10 +127,23 @@ class EmailVerificationNullContractTest {
 
         /** 원본도 실패 전까지 쓰기 작업이 없다 — 코드 삭제·인증상태 저장이 일어나면 안 된다. */
         @Test
+        fun `원본과 같은 순서로 조회한 뒤 findCode 에서 실패한다`() {
+            call()
+
+            val order = inOrder(verificationRepository, codeRepository)
+            order.verify(verificationRepository).existsByEmailAndVerifiedTrue(null)
+            order.verify(codeRepository).findCode(null)
+            order.verifyNoMoreInteractions()
+        }
+
+        @Test
         fun `코드 삭제나 인증 상태 저장이 일어나지 않는다`() {
             call()
 
-            verifyNoInteractions(codeRepository)
+            verify(codeRepository).findCode(null)
+            verifyNoMoreInteractions(codeRepository)
+            verify(verificationRepository).existsByEmailAndVerifiedTrue(null)
+            verifyNoMoreInteractions(verificationRepository)
             verifyNoInteractions(emailSender)
         }
     }

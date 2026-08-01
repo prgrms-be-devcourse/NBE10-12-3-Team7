@@ -1399,10 +1399,36 @@ Redis key·TTL·Lua 원자성은 기존 Testcontainers 통합 테스트가 이�
 요구하는 지점에만** `!!` 를 뒀다. 임의 기본값도, `INVALID_INPUT_VALUE` 신규 매핑도 없다.
 두 메서드 모두 **실패 전 쓰기 작업이 0건**이라 트랜잭션 rollback 후 남는 상태도 원본과 같다.
 
-남은 미세 차이 — `confirmVerification` 의 `existsByEmailAndVerifiedTrue` 는 2단계에서 파라미터를
-non-null 로 옮겨둔 상태라 `!!` 가 그 호출 **직전**에 평가된다. 원본은 이 읽기를 한 번 수행한 뒤
-다음 줄에서 NPE 가 났다. **예외 종류·쓰기 부수효과(0건)·rollback 결과는 동일**하고, JPA 읽기 한 번의
-실행 여부만 다르다. 그 저장소는 2단계 담당 파일이라 이번 단계에서 건드리지 않았다.
+### 파고들어 나온 세 번째 회귀 — 2단계 repository 파라미터 nullability 누락 🔴
+
+null 경로를 복원하는 과정에서 `confirmVerification` 이 여전히 원본과 다른 순서로 실패한다는 것을 발견했다.
+`existsByEmailAndVerifiedTrue` 가 2단계 전환에서 파라미터를 non-null 로 옮겨둔 탓에 Kotlin 호출부가
+`!!` 를 강제받았고, 그래서 **첫 조회를 수행하기도 전에** 실패했다.
+
+**JVM descriptor 는 동일하다** — `(Ljava/lang/String;)Z` 그대로다. 그래서 2단계의 `javap` 비교에서
+드러나지 않았고, Java 호출부도 아무 문제 없이 컴파일됐다. **Kotlin 호출부에서만 계약이 달라지는 종류**다.
+
+2단계 repository 4개를 전수 재점검한 결과 원본 Java 참조형을 non-null 로 좁힌 파라미터가 다음과 같았다.
+
+| 파일 | 메서드 | 원본 Java | 전환 후 | 조치 |
+|---|---|---|---|---|
+| `EmailVerificationRepository` | `findByEmail` | `String` | `String` non-null | `String?` 복원 |
+| `EmailVerificationRepository` | `existsByEmailAndVerifiedTrue` | `String` | `String` non-null | `String?` 복원 |
+| `MemberSocialAccountRepository` | `findByProviderAndProviderUserIdFetchMember` | `OAuthProvider`·`String` | 둘 다 non-null | 둘 다 nullable 복원 |
+| `RefreshTokenJpaEntityRepository` | `findByMemberId`·`deleteByMemberId` | `Long` | `Long?` | 이미 정상 |
+| `JpaRefreshTokenRepository` | `findByMemberId`·`deleteByMemberId` | `Long` | `Long?` | 이미 정상 |
+| `JpaRefreshTokenRepository` | `save` | `RefreshToken` | non-null | **미조치** — 3단계 `RefreshTokenRepository` 추상화가 non-null 이라 함께 고쳐야 한다 |
+
+복원 후 `confirmVerification(null)` 의 호출 순서가 원본과 같아졌다:
+`existsByEmailAndVerifiedTrue(null)`(읽기) → `findCode(null)` → NPE.
+`requestVerification(null)` 도 `existsByEmail(null)` → `getRemainingTtl(null)` → NPE 로 동일하다.
+`emailSender.send` 에만 `!!` 가 남는데, 원본에서도 그 지점이 메일 계층에 null 을 넘기던 자리이고
+test 프로파일에서는 그 앞에서 이미 실패해 도달하지 않는다.
+
+`EmailVerificationNullContractTest` 가 Mockito `InOrder` 로 두 메서드의 조회 순서를 고정한다.
+
+**교훈** — `javap` descriptor 비교만으로는 이 회귀를 잡을 수 없다. Kotlin nullability 는 descriptor 가 아니라
+메타데이터에 실리기 때문이다. 원본이 Java 참조형이면 Kotlin 에서도 nullable 로 두는 것을 기본값으로 삼는다.
 
 `validateAndGetMemberId` 의 boxed `Long` 회귀와는 **별개의 두 번째 실제 회귀**다.
 둘 다 계약 테스트(`AuthSupportServiceJvmSurfaceTest`·`EmailVerificationNullContractTest`)로 고정했다.

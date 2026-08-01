@@ -55,9 +55,9 @@ class EmailVerificationService(
         val code = generateCode()
         emailVerificationCodeRepository.save(email, code, ttl)
         // 새 코드를 발급했으니 이전 인증 상태(있었다면)는 무효화 — 새 코드에 대해 다시 인증해야 한다.
-        emailVerificationRepository.findByEmail(email!!).ifPresent { it.unverify() }
+        emailVerificationRepository.findByEmail(email).ifPresent { it.unverify() }
 
-        emailSender.send(email, "[마켓온] 이메일 인증 코드 안내", buildVerificationEmailBody(code))
+        emailSender.send(email!!, "[마켓온] 이메일 인증 코드 안내", buildVerificationEmailBody(code))
 
         return EmailVerificationResponse(email, LocalDateTime.now().plusMinutes(CODE_TTL_MINUTES))
     }
@@ -77,7 +77,7 @@ class EmailVerificationService(
      */
     fun confirmVerification(request: EmailVerificationConfirmRequest): EmailVerificationConfirmResponse {
         val email = request.email
-        if (emailVerificationRepository.existsByEmailAndVerifiedTrue(email!!)) {
+        if (emailVerificationRepository.existsByEmailAndVerifiedTrue(email)) {
             return EmailVerificationConfirmResponse(email, true)
         }
 
