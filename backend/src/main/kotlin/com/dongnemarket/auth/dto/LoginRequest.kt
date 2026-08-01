@@ -1,5 +1,7 @@
 package com.dongnemarket.auth.dto
 
+import com.fasterxml.jackson.annotation.JsonProperty
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 
@@ -30,8 +32,15 @@ open class LoginRequest
          * 이 프로퍼티만 `open` 이 아니다 — Kotlin 은 `@JvmName` 을 open 멤버에 붙이지 못한다
          * (이름을 바꾼 getter 를 오버라이드 가능하게 두면 가상 디스패치가 깨지기 때문).
          * `isAutoLogin()` 이름 유지(Java 호출부 + JSON 계약)가 getter 오버라이드 가능성보다 우선한다.
+         *
+         * `@get:JsonProperty` 는 JSON 필드명뿐 아니라 **springdoc OpenAPI schema 이름까지** 고정한다.
+         * 없으면 springdoc 이 `isAutoLogin()` getter 를 별도 프로퍼티로 읽어 schema 에 `isAutoLogin`
+         * 팬텀 필드가 생기고(required 로까지 올라간다) 정상 필드 `autoLogin` 이 writeOnly 로 뒤집힌다.
+         * 런타임 JSON 은 멀쩡해 기존 테스트로는 잡히지 않는다 — `AuthOpenApiContractTest` 가 이를 고정한다.
          */
         @get:JvmName("isAutoLogin")
+        @get:JsonProperty("autoLogin")
+        @get:Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         val autoLogin: Boolean = false,
     ) {
         /**

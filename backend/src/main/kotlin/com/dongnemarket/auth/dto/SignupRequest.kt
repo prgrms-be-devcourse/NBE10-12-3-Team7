@@ -1,5 +1,7 @@
 package com.dongnemarket.auth.dto
 
+import com.fasterxml.jackson.annotation.JsonProperty
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
@@ -33,11 +35,20 @@ open class SignupRequest(
      *
      * 두 boolean 프로퍼티만 `open` 이 아니다 — Kotlin 은 `@JvmName` 을 open 멤버에 붙이지 못한다.
      * `isTermsAgreed()` / `isPersonalInfoCollectionAgreed()` 이름 유지가 getter 오버라이드 가능성보다 우선한다.
+     *
+     * `@get:JsonProperty` 는 JSON 필드명뿐 아니라 **springdoc OpenAPI schema 이름까지** 고정한다.
+     * 없으면 springdoc 이 `isXxx()` getter 를 별도 프로퍼티로 읽어 schema 에 팬텀 필드가 생기고
+     * required 로까지 올라간다. 런타임 JSON 은 멀쩡해 기존 테스트로는 잡히지 않는다 —
+     * `AuthOpenApiContractTest` 가 이를 고정한다.
      */
     @get:JvmName("isTermsAgreed")
+    @get:JsonProperty("termsAgreed")
+    @get:Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     val termsAgreed: Boolean = false,
     /** 개인정보 수집 및 이용 동의 여부. 필수 동의 항목이라 서비스 레벨에서 검증한다(미동의 시 PERSONAL_INFO_COLLECTION_NOT_AGREED). */
     @get:JvmName("isPersonalInfoCollectionAgreed")
+    @get:JsonProperty("personalInfoCollectionAgreed")
+    @get:Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     val personalInfoCollectionAgreed: Boolean = false,
 ) {
     /**

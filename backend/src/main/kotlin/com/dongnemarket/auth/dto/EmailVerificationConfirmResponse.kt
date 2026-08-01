@@ -1,6 +1,7 @@
 package com.dongnemarket.auth.dto
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import io.swagger.v3.oas.annotations.media.Schema
 
 /**
  * data class 아님(원본에 equals/hashCode 없음).
@@ -21,5 +22,6 @@ open class EmailVerificationConfirmResponse(
     open val email: String?,
     @get:JvmName("isVerified")
     @get:JsonProperty("verified")
+    @get:Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     val verified: Boolean,
 )
