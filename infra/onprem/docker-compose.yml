@@ -1,13 +1,15 @@
 # 온프레미스(로컬 전체 컨테이너) 배포. nginx·Next·Spring Boot·MySQL·Redis를 한 호스트에 자기완결로 올린다.
-# 클라우드(infra/cloud/)와 달리 이미지를 로컬에서 빌드하고, DB도 같은 스택의 MySQL 컨테이너를 쓴다.
-# 앱은 prod 프로파일 + FILE_STORAGE_TYPE=local(기본). 클라우드와의 차이는 프로파일이 아니라 env·이미지 출처뿐.
+# 앱/프론트 이미지는 사설 레지스트리 Zot에서 pull한다(클라우드의 ECR 대응). DB도 같은 스택의 MySQL 컨테이너.
+# 앱은 prod 프로파일 + FILE_STORAGE_TYPE=s3(같은 스택의 RustFS). 클라우드와의 차이는 프로파일이 아니라
+# env(스토리지 endpoint·DB 주소)와 이미지 출처(Zot ↔ ECR)뿐이다.
 # (설계·경계: ../infra.md)
 #
 # 사용(이 폴더에서):
 #   cp .env.example .env                                       # 값 채우기(.env는 gitignore)
-#   (cd ../../backend && ./gradlew clean build -x test)        # 앱 이미지용 JAR 선행 빌드(필수)
-#   docker compose --env-file .env up -d --build               # nginx+next+app+mysql+redis
-#   docker compose --env-file .env --profile observability up -d --build   # +관측
+#   docker compose --env-file .env up -d zot                   # ① 레지스트리 먼저
+#   ./build-and-push.sh                                        # ② 이미지 빌드 → Zot push
+#   docker compose --env-file .env up -d                       # ③ 나머지(app/next는 Zot에서 pull)
+#   docker compose --env-file .env --profile observability up -d           # +관측
 #   docker compose --env-file .env --profile edge up -d        # +외부 임시 URL(Cloudflare 퀵터널)
 name: dongnemarket-onprem
 
@@ -48,6 +50,38 @@ services:
       timeout: 5s
       retries: 10
 
+  # 사설 이미지 레지스트리 Zot — 클라우드의 ECR 대응. app/next 이미지를 여기 push하고 스택은 여기서 pull한다.
+  # compose의 image pull은 depends_on을 기다리지 않으므로, 최초 기동은 zot → build-and-push.sh → 나머지 순서로.
+  zot:
+    image: ghcr.io/project-zot/zot:latest
+    container_name: dongne-zot
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./zot/config.json:/etc/zot/config.json:ro
+      - dongne-zot-data:/var/lib/registry
+    # healthcheck 없음: zot 이미지는 zot 바이너리 하나만 담은 distroless라 셸·wget·curl이 없다.
+    # 컨테이너 안에서 실행할 수단이 없으므로 어떤 test도 통과하지 못한다(exec: "/bin/sh": no such file).
+    # 가용성은 build-and-push.sh의 `curl /v2/` 사전 확인과 app/next의 pull 성공으로 검증한다.
+
+  # S3 호환 오브젝트 스토리지 RustFS — 클라우드의 S3 대응. app이 이미지 파일을 여기에 저장한다.
+  # 자격증명 env 이름은 이미지의 entrypoint.sh에서 확인함(RUSTFS_ACCESS_KEY/SECRET_KEY, 기본 rustfsadmin).
+  # 빈 문자열을 주면 기동이 하드 실패하므로 .env에 반드시 값이 있어야 한다.
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: dongne-rustfs
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # 콘솔
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+    volumes:
+      - dongne-rustfs-data:/data     # named volume — 비루트(UID 10001) 권한 이슈 회피
+      - dongne-rustfs-logs:/logs
+
   # 관리자 AI 어시스턴트용 Ollama — 온프레미스 스택 내 컨테이너(사내 서버 대체, qwen3:1.7b 통일).
   ollama:
     image: ollama/ollama:latest
@@ -75,10 +109,8 @@ services:
     restart: "no"
 
   app:
-    build:
-      context: ../../backend          # ← 리포 루트 기준(이 폴더에서 두 단계 위)
-      dockerfile: Dockerfile
-    image: dongnemarket-app:latest
+    # 로컬 빌드가 아니라 Zot에서 pull한다(ECR 방식 그대로 재현). 빌드·푸시는 ./build-and-push.sh 담당.
+    image: ${IMAGE_REGISTRY:-localhost:5000}/dongnemarket-app:${IMAGE_TAG:-latest}
     container_name: dongne-app
     restart: unless-stopped
     depends_on:
@@ -90,8 +122,15 @@ services:
         condition: service_healthy
       ollama-pull:
         condition: service_completed_successfully
+      rustfs:
+        condition: service_started
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      # [임시] Kotlin 전환 중 auctions·escrows·manner_scores 엔티티에 대응하는 Flyway 마이그레이션이
+      # 아직 없어 prod의 ddl-auto=validate가 기동을 막는다. 온프레미스에서만 .env로 update를 주입해
+      # Hibernate가 누락 테이블을 만들게 한다. 기본값은 validate — 클라우드(EC2) 배포 의미는 그대로다.
+      # 전환 완료 후 V7 마이그레이션이 들어오면 이 줄과 .env의 값을 함께 제거할 것.
+      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-validate}
       DB_URL: jdbc:mysql://mysql:3306/dongne_market?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
       DB_USERNAME: ${DB_USERNAME:-dongne}
       DB_PASSWORD: ${DB_PASSWORD:-dongne1234}
@@ -107,22 +146,22 @@ services:
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
-      # 파일 저장소. 온프레미스 기본값은 local(볼륨 마운트). S3로 쓰려면 .env에서
-      # FILE_STORAGE_TYPE=s3 + AWS_S3_BUCKET/AWS_REGION + AWS 자격증명(~/.aws 마운트 등)을 직접 준비.
-      FILE_STORAGE_TYPE: ${FILE_STORAGE_TYPE:-local}
+      # 파일 저장소. 온프레미스는 s3 타입 + 같은 스택의 RustFS를 가리킨다(클라우드는 같은 타입에 실제 S3).
+      # FILE_STORAGE_S3_ENDPOINT 값이 있으면 S3Config가 정적 자격증명·path-style 경로로 분기한다.
+      FILE_STORAGE_TYPE: ${FILE_STORAGE_TYPE:-s3}
       FILE_STORAGE_LOCAL_BASE_PATH: /app/uploads
-      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
-      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-marketon-images}
+      AWS_REGION: ${AWS_REGION:-us-east-1}          # RustFS는 region을 검증하지 않는다
+      FILE_STORAGE_S3_ENDPOINT: ${FILE_STORAGE_S3_ENDPOINT:-http://rustfs:9000}
+      FILE_STORAGE_S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      FILE_STORAGE_S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
     volumes:
-      - dongne-uploads:/app/uploads     # local 모드일 때만 실제로 쓰인다(신고 증빙 + 상품 이미지 공용)
+      - dongne-uploads:/app/uploads     # local 모드로 되돌릴 때만 쓰인다(신고 증빙 + 상품 이미지 공용)
     expose:
       - "8080"                          # 외부 노출 대신 nginx 통해서만 접근
 
   next:
-    build:
-      context: ../../frontend
-      dockerfile: Dockerfile
-    image: dongnemarket-next:latest
+    image: ${IMAGE_REGISTRY:-localhost:5000}/dongnemarket-next:${IMAGE_TAG:-latest}
     container_name: dongne-next
     restart: unless-stopped
     environment:
@@ -141,6 +180,31 @@ services:
       - "80:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  # ── profile "cicd": 온프레미스 CD (클라우드의 GitHub Actions 대응) ──
+  # 부하테스트 중에는 자원 경쟁을 피하려 내려두는 편이 낫다 → 별도 프로파일로 격리.
+  jenkins:
+    profiles: ["cicd"]
+    build:
+      context: ./jenkins                # 인프라 도구라 Zot을 거치지 않고 로컬 빌드한다
+    image: dongnemarket-jenkins:latest
+    container_name: dongne-jenkins
+    restart: unless-stopped
+    user: root                          # docker.sock 접근용. Dockerfile 주석의 보안 트레이드오프 참고
+    ports:
+      - "8080:8080"
+    environment:
+      JENKINS_ADMIN_USER: ${JENKINS_ADMIN_USER:-admin}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?jenkins 관리자 비밀번호를 .env에 설정할 것}
+      HOST_REPO_PATH: ${HOST_REPO_PATH:?호스트의 리포 절대경로를 .env에 설정할 것}
+      IMAGE_REGISTRY: ${IMAGE_REGISTRY:-localhost:5000}
+    volumes:
+      - dongne-jenkins-data:/var/jenkins_home
+      - ./jenkins/casc.yaml:/var/jenkins_home/casc.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 배포 단계가 호스트의 compose 파일·.env를 그대로 쓰도록 "같은 절대경로"로 마운트한다.
+      # 경로가 다르면 compose의 상대경로 바인드 마운트(./nginx.conf 등)가 호스트에서 깨진다.
+      - ${HOST_REPO_PATH:-/nonexistent}:${HOST_REPO_PATH:-/nonexistent}
 
   # ── profile "observability": Prometheus · Loki · Grafana · Promtail ──
   prometheus:
@@ -208,6 +272,10 @@ services:
       - nginx
 
 volumes:
+  dongne-jenkins-data:
+  dongne-zot-data:
+  dongne-rustfs-data:
+  dongne-rustfs-logs:
   dongne-mysql-data:
   dongne-redis-data:
   dongne-ollama-data:
