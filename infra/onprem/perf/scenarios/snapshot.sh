@@ -23,21 +23,31 @@ require_stack
 #   목록      커서 페이징. PK 정렬이라 인덱스를 탄다
 #   검색      lower(title) LIKE '%키워드%' — 선행 와일드카드라 인덱스가 무용지물
 #   카테고리  페이징이 없어 해당 카테고리 상품을 통째로 반환한다
-declare -a NAMES=(list search category)
+#   검색(흔함) 거의 모든 상품이 매칭돼 30건을 찾는 즉시 스캔이 끝난다 — 실제 사용자 패턴에 가깝다
+#   검색(희귀) 매칭 0건이라 전체를 끝까지 훑는다 — LIKE 풀스캔의 진짜 최악
+declare -a NAMES=(list search_common search_rare category)
 declare -a PATHS=(
   "/api/products"
   "/api/products?keyword=%EC%A4%91%EA%B3%A0"
+  "/api/products?keyword=zzznothing"
   "/api/categories/1/products"
 )
 
 # 응답시간 N회를 재고 중앙값을 돌려준다(ms). 첫 회는 워밍업으로 버린다 —
 # JIT 컴파일과 커넥션 풀 초기화 때문에 첫 요청만 유독 느려 중앙값을 왜곡한다.
+# 반드시 HTTP 200 인지 확인한다. 거부 응답(429·5xx)은 본문이 없어 빠르게 돌아오므로,
+# 상태를 안 보면 "빨라졌다"로 잘못 기록된다 — 실제로 겪었다. 앱의 요청 제한은
+# 기본 10초당 60건(초당 6건)이라, 다른 트래픽을 동시에 흘리면 측정이 429로 오염된다.
 measure() {
-  local path="$1" i t
+  local path="$1" i t code
   curl -s -o /dev/null "$BASE_URL$path" || true          # 워밍업
   local times=()
   for ((i = 0; i < SAMPLES; i++)); do
-    t="$(curl -s -o /dev/null -w '%{time_total}' "$BASE_URL$path")"
+    read -r t code <<< "$(curl -s -o /dev/null -w '%{time_total} %{http_code}' "$BASE_URL$path")"
+    if [ "$code" != "200" ]; then
+      echo "✗ $path 가 HTTP $code — 측정 중단. 동시에 도는 트래픽이 있는지 확인할 것" >&2
+      exit 1
+    fi
     times+=("$t")
   done
   printf '%s\n' "${times[@]}" | python3 -c '

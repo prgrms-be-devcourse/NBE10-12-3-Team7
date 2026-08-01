@@ -1,0 +1,16 @@
+{
+  "step": "2",
+  "at": "2026-08-01T10:05:14Z",
+  "samples": 7,
+  "data": {
+    "products_total": 30006,
+    "products_perf": 30000,
+    "members_perf": 500,
+    "db_mib": 27.3
+  },
+  "db": {
+    "buffer_pool_mib": 128,
+    "buffer_hit_rate_pct": 100
+  },
+  "endpoints": { "list":{"path":"/api/products","median_ms":12.2,"min_ms":10.9,"max_ms":13.2},"search_common":{"path":"/api/products?keyword=%EC%A4%91%EA%B3%A0","median_ms":13.2,"min_ms":12.4,"max_ms":13.5},"search_rare":{"path":"/api/products?keyword=zzznothing","median_ms":12.5,"min_ms":12.0,"max_ms":13.3},"category":{"path":"/api/categories/1/products","median_ms":229.8,"min_ms":225.7,"max_ms":234.5} }
+}
