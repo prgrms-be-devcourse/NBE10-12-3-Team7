@@ -97,6 +97,11 @@ file:
     s3:
       bucket: ${AWS_S3_BUCKET:}
       region: ${AWS_REGION:ap-northeast-2}
+      # endpoint가 비어 있으면 AWS S3(기본 자격증명 체인), 값이 있으면 S3 호환 스토리지(온프레미스 RustFS)로
+      # 붙는다. 두 지형의 차이를 프로파일이 아니라 env로만 가르기 위한 분기점이다(S3Config 참고).
+      endpoint: ${FILE_STORAGE_S3_ENDPOINT:}
+      access-key: ${FILE_STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${FILE_STORAGE_S3_SECRET_KEY:}
 
 # 일반 API 요청 속도 제한(슬라이딩 윈도우, Redis 기반). 로그인 시도 제한(auth.LoginAttemptService, 고정 윈도우)과는
 # 별개로 모든 /api/** 요청에 적용되는 범용 남용 방지 장치다. window-seconds 동안 capacity회 초과 시 429.
