@@ -215,6 +215,59 @@ services:
       # 경로가 다르면 compose의 상대경로 바인드 마운트(./nginx.conf 등)가 호스트에서 깨진다.
       - ${HOST_REPO_PATH:-/nonexistent}:${HOST_REPO_PATH:-/nonexistent}
 
+  # ── profile "observability" — exporter 3종 ──
+  # 대시보드는 앱·컨테이너·DB·하드웨어 네 구역을 위에서 아래로 훑도록 배치한다.
+  # 앱 지표는 앱이 직접 노출하지만(actuator), 나머지 세 구역은 각각 exporter가 필요하다.
+
+  # 컨테이너별 CPU·메모리·네트워크. 앱이 mem_limit에 눌렸는지 여기서만 판별된다.
+  cadvisor:
+    profiles: ["observability"]
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: dongne-cadvisor
+    restart: unless-stopped
+    privileged: true
+    # 디스크 지표를 끈다. cAdvisor는 컨테이너의 read-write 레이어 크기를 재려고
+    # /var/lib/docker 를 뒤지는데, macOS 호스트에는 그 경로가 없어 조회에 실패하면
+    # 컨테이너 등록 자체를 포기한다 → CPU·메모리까지 통째로 안 잡힌다.
+    # 컨테이너 디스크 사용량은 이 대시보드에서 쓰지 않으므로 꺼도 잃는 게 없다.
+    command:
+      - '--disable_metrics=disk,diskIO,tcp,udp,percpu,sched,process,hugetlb,referenced_memory'
+    ports:
+      - "8081:8080"
+    volumes:
+      # macOS 호스트에는 /sys 도 /var/lib/docker 도 없다. 리눅스용 표준 예제처럼 그것들을
+      # 통째로 마운트하면 빈 디렉터리가 실제 cgroupfs를 가려 개별 컨테이너가 보이지 않는다
+      # (최상위 슬라이스만 잡히고 name 라벨이 붙지 않는다). 필요한 둘만 명시적으로 붙인다.
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # 도커 팩토리 등록 → name 라벨
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro               # VM의 컨테이너별 cgroup 통계
+
+  # 호스트 자원. ⚠️ Docker Desktop에서는 맥이 아니라 컨테이너가 실제로 도는 리눅스 VM이 보인다.
+  node-exporter:
+    profiles: ["observability"]
+    image: prom/node-exporter:v1.8.2
+    container_name: dongne-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.rootfs=/host'
+    pid: host
+    volumes:
+      - /:/host:ro          # Docker Desktop은 rslave 전파 옵션을 지원하지 않는다
+
+  # MySQL 내부 지표(커넥션·슬로우 쿼리·InnoDB 버퍼풀). 전용 계정으로 붙는다.
+  mysqld-exporter:
+    profiles: ["observability"]
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: dongne-mysqld-exporter
+    restart: unless-stopped
+    command:
+      - '--mysqld.address=mysql:3306'
+      - '--mysqld.username=exporter'
+    environment:
+      MYSQLD_EXPORTER_PASSWORD: ${MYSQL_EXPORTER_PASSWORD:?exporter 계정 비밀번호를 .env에 설정할 것}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
   # ── profile "observability": Prometheus · Loki · Grafana · Promtail ──
   prometheus:
     profiles: ["observability"]
