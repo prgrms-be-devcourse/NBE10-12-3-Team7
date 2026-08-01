@@ -102,7 +102,7 @@ class ProductRepositoryTest {
 				saveGangnamWithDong()
 		));
 
-		boolean exists = productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(product.getId());
+		boolean exists = productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(product.getId());
 
 		assertThat(exists).isTrue();
 	}
@@ -279,7 +279,7 @@ class ProductRepositoryTest {
 		product.softDelete();
 		Product savedProduct = productRepository.saveAndFlush(product);
 
-		boolean exists = productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(savedProduct.getId());
+		boolean exists = productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(savedProduct.getId());
 
 		assertThat(exists).isFalse();
 	}
@@ -300,7 +300,7 @@ class ProductRepositoryTest {
 		product.hide();
 		Product savedProduct = productRepository.saveAndFlush(product);
 
-		boolean exists = productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(savedProduct.getId());
+		boolean exists = productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(savedProduct.getId());
 
 		assertThat(exists).isFalse();
 	}

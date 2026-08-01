@@ -298,7 +298,7 @@ public class ProductService {
 	}
 
 	public void validateAccessibleProduct(Long productId) {
-		if (!productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(productId)) {
+		if (!productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(productId)) {
 			throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND);
 		}
 	}

@@ -3,6 +3,7 @@ package com.dongnemarket.product.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -384,7 +385,7 @@ class ProductServiceTest {
 					ErrorCode.UNAUTHORIZED
 			);
 
-			verify(productRepository, never()).findAllByMemberIdAndDeletedAtIsNullOrderByIdDesc(any());
+			verify(productRepository, never()).findAllByMemberIdAndDeletedAtIsNullOrderByIdDesc(anyLong());
 		}
 	}
 
@@ -774,7 +775,7 @@ class ProductServiceTest {
 					ErrorCode.INVALID_INPUT_VALUE
 			);
 
-			verify(productImageRepository, never()).deleteAllByProductId(any());
+			verify(productImageRepository, never()).deleteAllByProductId(anyLong());
 		}
 	}
 
@@ -997,17 +998,17 @@ class ProductServiceTest {
 		@Test
 		@DisplayName("접근 가능한 상품이면 검증을 통과한다")
 		void validatesAccessibleProduct() {
-			given(productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(PRODUCT_ID)).willReturn(true);
+			given(productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(PRODUCT_ID)).willReturn(true);
 
 			productService.validateAccessibleProduct(PRODUCT_ID);
 
-			verify(productRepository).existsByIdAndDeletedAtIsNullAndHiddenFalse(PRODUCT_ID);
+			verify(productRepository).existsByIdAndDeletedAtIsNullAndIsHiddenFalse(PRODUCT_ID);
 		}
 
 		@Test
 		@DisplayName("존재하지 않는 상품이면 접근 가능한 상품으로 인정하지 않는다")
 		void throwsProductNotFoundWhenValidatingMissingProduct() {
-			given(productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(PRODUCT_ID)).willReturn(false);
+			given(productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(PRODUCT_ID)).willReturn(false);
 
 			assertInaccessibleProduct();
 		}
@@ -1015,7 +1016,7 @@ class ProductServiceTest {
 		@Test
 		@DisplayName("삭제된 상품이면 접근 가능한 상품으로 인정하지 않는다")
 		void throwsProductNotFoundWhenValidatingDeletedProduct() {
-			given(productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(PRODUCT_ID)).willReturn(false);
+			given(productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(PRODUCT_ID)).willReturn(false);
 
 			assertInaccessibleProduct();
 		}
@@ -1023,7 +1024,7 @@ class ProductServiceTest {
 		@Test
 		@DisplayName("숨김 상품이면 접근 가능한 상품으로 인정하지 않는다")
 		void throwsProductNotFoundWhenValidatingHiddenProduct() {
-			given(productRepository.existsByIdAndDeletedAtIsNullAndHiddenFalse(PRODUCT_ID)).willReturn(false);
+			given(productRepository.existsByIdAndDeletedAtIsNullAndIsHiddenFalse(PRODUCT_ID)).willReturn(false);
 
 			assertInaccessibleProduct();
 		}
