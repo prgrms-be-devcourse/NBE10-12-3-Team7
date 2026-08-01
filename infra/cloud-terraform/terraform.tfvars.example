@@ -1,0 +1,5 @@
+# 실제 값은 이 파일을 terraform.tfvars 로 복사해 채운다(terraform.tfvars 는 gitignore).
+# 지금은 전부 기본값과 동일 — 리전/프로젝트/환경을 바꾸고 싶을 때만 수정한다.
+aws_region  = "ap-northeast-2"
+project     = "marketon"
+environment = "prod"
