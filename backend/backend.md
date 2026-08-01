@@ -125,6 +125,21 @@ docker compose up -d --wait     # 리포 루트에서 — MySQL만 기동
 ./gradlew bootRun               # :8080
 ```
 
+### 데이터 적재 스위치
+
+프로파일은 **어느 환경인가**(`test`·`dev`·`prod`)만 표현한다. **무엇을 추가로 적재할까**는 env로 켠다.
+
+```bash
+# 데모 데이터(회원 6·상품 6·댓글 5·신고 5) 주입. 기존 데이터는 유지된다
+APP_SEED_DEMO=true ./gradlew bootRun
+
+# 스키마를 지우고 처음부터 — ⚠️ 데이터 전체 소실
+APP_SEED_DEMO=true SPRING_JPA_HIBERNATE_DDL_AUTO=create ./gradlew bootRun
+```
+
+마스터(카테고리·지역)와 부트스트랩(관리자)에는 스위치가 없다 — 없으면 서비스가 성립하지 않는
+데이터라 항상 적재된다. 계층별 설명과 환경별 적재 현황은 `infra/infra.md` 참고.
+
 ## 테스트
 
 ```bash
