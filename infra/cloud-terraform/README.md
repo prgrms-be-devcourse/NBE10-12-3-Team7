@@ -28,13 +28,23 @@
 
 ## 다음 세션 시작점
 
-- [x] **Step 0** 스캐폴드 — `versions.tf` · `providers.tf` · `variables.tf` · `.gitignore`
-- [ ] **Step 1** network — VPC · subnet(2a·2b) · IGW · route table · security group  ← **여기부터**
+- [x] **Step 0** 스캐폴드 — `versions.tf` · `providers.tf` · `variables.tf`
+- [x] **Step 1** network — VPC · subnet(public/private ×2) · IGW · route (NAT 없이 IGW egress)
+- [x] **Step 2** data — RDS MySQL · ElastiCache Redis · SG 3종(app만 접근)
+- [x] **Step 3** registry/storage/secrets — ECR ×2 · S3(퍼블릭 차단) · Secrets Manager
+- [ ] **Step 4** ecs (Fargate app·next) — cluster · IAM · logs · task def  ← **여기부터**
+- [ ] **Step 5** alb (+ACM) · ecs service
+- [ ] **Step 6** ec2 (Ollama·모니터링)
+- [ ] **Step 7** dns (Route53)
 
 재개 명령:
 
 ```bash
 cd infra/cloud-terraform
-tofu init        # 프로바이더 내려받기(AWS 호출 없음, 과금 없음)
-tofu validate    # 문법·구성 검증
+tofu init && tofu validate && tofu plan   # 현재 plan: 21 to add
 ```
+
+## 함정 기록
+
+- **gitignore 인라인 주석 미지원** — `.terraform/  # 주석`처럼 패턴 뒤에 주석을 붙이면 패턴 전체가
+  깨져 무시가 안 된다(수백 MB 프로바이더 바이너리가 커밋에 딸려옴). 주석은 반드시 **별도 줄**로.

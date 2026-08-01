@@ -40,3 +40,17 @@ resource "aws_security_group" "redis" {
   }
   tags = { Name = "${var.project}-redis-sg" }
 }
+
+# next(프론트) 태스크 SG. 인바운드(ALB로부터 3000)는 alb.tf에서 채운다.
+resource "aws_security_group" "next" {
+  name        = "${var.project}-next-sg"
+  description = "ECS next tasks"
+  vpc_id      = aws_vpc.main.id
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = { Name = "${var.project}-next-sg" }
+}
