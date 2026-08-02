@@ -7,6 +7,7 @@ import com.dongnemarket.mobile.domain.model.MemberLocation
 import com.dongnemarket.mobile.domain.model.Product
 import com.dongnemarket.mobile.domain.model.ProductPage
 import com.dongnemarket.mobile.domain.model.TradeStatus
+import com.dongnemarket.mobile.domain.model.RegionRef
 import com.dongnemarket.mobile.domain.repository.CategoryRepository
 import com.dongnemarket.mobile.domain.repository.MemberRepository
 import com.dongnemarket.mobile.domain.repository.ProductRepository
@@ -66,7 +67,7 @@ class HomeViewModelTest {
         val 동네응답게이트 = CompletableDeferred<Unit>()
         coEvery { memberRepository.getMyLocations() } coAnswers {
             동네응답게이트.await()
-            Result.success(listOf(MemberLocation(region = "서울 강남구", sortOrder = 0, active = true)))
+            Result.success(listOf(MemberLocation(region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"), sortOrder = 0, active = true)))
         }
         coEvery { categoryRepository.getCategories() } returns Result.success(카테고리_4종)
         coEvery { productRepository.getProducts(any(), any(), any()) } returns
@@ -127,8 +128,8 @@ class HomeViewModelTest {
         // Given: 대표 동네(active)가 리스트의 첫 원소가 아니어도 골라내야 한다
         coEvery { memberRepository.getMyLocations() } returns Result.success(
             listOf(
-                MemberLocation(region = "서울 마포구", sortOrder = 1, active = false),
-                MemberLocation(region = "서울 강남구", sortOrder = 0, active = true),
+                MemberLocation(region = RegionRef(code = "11440", name = "마포구", fullName = "서울특별시 마포구"), sortOrder = 1, active = false),
+                MemberLocation(region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"), sortOrder = 0, active = true),
             ),
         )
         coEvery { categoryRepository.getCategories() } returns Result.success(카테고리_4종)
@@ -139,7 +140,7 @@ class HomeViewModelTest {
 
         // Then
         val state = viewModel.uiState.value as HomeUiState.Success
-        assertEquals("서울 강남구", state.region)
+        assertEquals("강남구", state.region)
     }
 
     // ─────────────────────── 2. 실패 정책(셋이 서로 다르다) ───────────────────────
@@ -218,7 +219,7 @@ class HomeViewModelTest {
 
         // Then: regions 를 빈 리스트가 아니라 null 로 넘겨야 파라미터 자체가 생략된다(= 전국)
         coVerify(exactly = 1) {
-            productRepository.getProducts(regions = isNull(), cursor = isNull(), size = eq(30))
+            productRepository.getProducts(regionCodes = isNull(), cursor = isNull(), size = eq(30))
         }
     }
 
@@ -228,9 +229,9 @@ class HomeViewModelTest {
         //        리스트 순서는 뒤섞여 있고 sortOrder 가 진짜 우선순위다.
         coEvery { memberRepository.getMyLocations() } returns Result.success(
             listOf(
-                MemberLocation(region = "서울 마포구", sortOrder = 2, active = false),
-                MemberLocation(region = "서울 강남구", sortOrder = 0, active = true),
-                MemberLocation(region = "서울 서초구", sortOrder = 1, active = false),
+                MemberLocation(region = RegionRef(code = "11440", name = "마포구", fullName = "서울특별시 마포구"), sortOrder = 2, active = false),
+                MemberLocation(region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"), sortOrder = 0, active = true),
+                MemberLocation(region = RegionRef(code = "11650", name = "서초구", fullName = "서울특별시 서초구"), sortOrder = 1, active = false),
             ),
         )
         coEvery { categoryRepository.getCategories() } returns Result.success(카테고리_4종)
@@ -242,7 +243,7 @@ class HomeViewModelTest {
         // Then: sortOrder 로 정렬한 뒤 앞 2개
         coVerify(exactly = 1) {
             productRepository.getProducts(
-                regions = eq(listOf("서울 강남구", "서울 서초구")),
+                regionCodes = eq(listOf("11680", "11650")),
                 cursor = isNull(),
                 size = eq(30),
             )
@@ -269,7 +270,7 @@ class HomeViewModelTest {
             productRepository.searchProducts(
                 keyword = isNull(),
                 categoryId = eq(2L),
-                regions = eq(listOf("서울 강남구")),
+                regionCodes = eq(listOf("11680")),
             )
         }
     }
@@ -328,7 +329,7 @@ class HomeViewModelTest {
             productRepository.searchProducts(
                 keyword = eq("자전거"),
                 categoryId = isNull(),
-                regions = eq(listOf("서울 강남구")),
+                regionCodes = eq(listOf("11680")),
             )
         }
     }
@@ -593,7 +594,7 @@ class HomeViewModelTest {
     // ─────────────────────── 테스트 데이터 ───────────────────────
 
     private val 내동네_강남 = listOf(
-        MemberLocation(region = "서울 강남구", sortOrder = 0, active = true),
+        MemberLocation(region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"), sortOrder = 0, active = true),
     )
 
     private val 카테고리_4종 = listOf(
@@ -617,7 +618,7 @@ class HomeViewModelTest {
         title = "상품 $productId",
         price = BigDecimal("35000.00"),
         tradeStatus = TradeStatus.ON_SALE,
-        region = "서울 강남구",
+        region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"),
         viewCount = 0L,
         favoriteCount = 0,
         thumbnailUrl = null,

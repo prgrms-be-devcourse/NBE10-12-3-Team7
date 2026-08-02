@@ -41,19 +41,29 @@ data class ChatMemberSummary(
 )
 
 /**
- * 방 **생성** 응답에 실려 오는 상품 정보. `description`·`region` 이 있다.
+ * 방 **생성** 응답에 실려 오는 상품 정보. `description`·지역이 있다.
  *
  * [ChatProductSummary] 와 필드 구성이 달라 한 클래스로 합칠 수 없다.
+ *
+ * ### ⚠️ 이 클래스가 "채팅하기"를 막고 있었다 (2026-07 수정)
+ * 백엔드 지역 개편으로 `region: String` 키가 사라졌는데 여기가 **non-null·기본값 없음**이라
+ * `MissingFieldException` 이 나고 → `apiCall` 이 실패로 번역 → **방 생성이 통째로 실패**했다.
+ * 화면에는 "알 수 없는 오류"만 뜨고 원인 단서가 남지 않는 유형이다.
+ *
+ * 서버(`chat/dto/ChatProductDetail.kt`)는 이 DTO의 필드를 전부 nullable 로 선언하고 있으므로
+ * 여기서도 nullable + 기본값으로 맞춘다.
  */
 @Serializable
 data class ChatProductDetail(
     val productId: Long,
-    val title: String,
-    val description: String,
+    val title: String = "",
+    val description: String = "",
     @Serializable(with = BigDecimalSerializer::class)
-    val price: BigDecimal,
+    val price: BigDecimal = BigDecimal.ZERO,
     val tradeStatus: TradeStatus = TradeStatus.UNKNOWN,
-    val region: String,
+    val regionCode: String? = null,
+    val regionName: String? = null,
+    val regionFullName: String? = null,
     val thumbnailUrl: String? = null,
 )
 

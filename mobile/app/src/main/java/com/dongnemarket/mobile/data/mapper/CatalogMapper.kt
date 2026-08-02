@@ -25,17 +25,28 @@ fun CategoryResponse.toDomain(): Category = Category(
 /** 카테고리 목록 변환. **서버가 준 순서(id ASC = 시드 순서)를 유지한다** — 재정렬 금지(계약 §8-8). */
 fun List<CategoryResponse>.toCategoryDomain(): List<Category> = map { it.toDomain() }
 
-/** 지역 DTO 한 건 → 도메인. 서버 키는 `regionId` 다(카테고리와 다르다). */
+/**
+ * 지역 DTO 한 건 → 도메인. 서버 키는 `regionId` 다(카테고리는 `id` — 비대칭 유지).
+ *
+ * ⚠️ 2026-07 개편으로 필드가 `{regionId, name}` → 6개로 교체됐다.
+ * `regionId` 는 서버가 null 을 줄 수 있어(`Long?`) 목록 key 로 쓰려면 채워야 하는데,
+ * 지역은 `code` 가 사실상 고유하므로 **id 가 없으면 code 의 해시로 대체**한다.
+ * (LazyColumn 의 key 는 안정적이기만 하면 되고 서버 PK 일 필요는 없다.)
+ */
 fun RegionResponse.toDomain(): Region = Region(
-    regionId = regionId,
-    name = name,
+    regionId = regionId ?: code.hashCode().toLong(),
+    code = code,
+    level = level,
+    parentCode = parentCode,
+    fullName = fullName,
+    displayName = displayName,
 )
 
 /**
- * 지역 목록 변환. 서버 순서(`name` 가나다 ASC)를 유지한다.
+ * 지역 목록 변환. 서버 순서를 유지한다(재정렬 금지).
  *
- * [Region.name] 을 `trim()` 하거나 공백을 정규화하지 **않는다.**
- * 이 문자열이 그대로 상품 필터·내 동네 설정 요청에 실려 서버에서 완전 비교되기 때문에,
- * 여기서 한 글자라도 손대면 원인 불명 400 이 난다(계약 §7-18).
+ * 문자열을 `trim()` 하거나 정규화하지 **않는다.** 예전에는 이름 문자열이 그대로 요청에 실려
+ * 서버에서 완전 비교됐기 때문인데, 지금은 [Region.code] 로 통신하므로 그 위험은 사라졌다.
+ * 그래도 표시 문자열을 임의로 손대지 않는 원칙은 유지한다 — 서버가 준 그대로가 정본이다.
  */
 fun List<RegionResponse>.toRegionDomain(): List<Region> = map { it.toDomain() }

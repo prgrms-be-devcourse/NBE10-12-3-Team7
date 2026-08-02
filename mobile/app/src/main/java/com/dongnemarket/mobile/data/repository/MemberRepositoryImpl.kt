@@ -26,16 +26,16 @@ class MemberRepositoryImpl @Inject constructor(
     override suspend fun getMyLocations(): Result<List<MemberLocation>> =
         apiCall { api.getMyLocations() }.map { list -> list.map { it.toDomain() } }
 
-    override suspend fun updateMyLocations(regions: List<String>): Result<List<MemberLocation>> {
+    override suspend fun updateMyLocations(regionCodes: List<String>): Result<List<MemberLocation>> {
         // 서버로 보내기 전에 직접 검증한다.
         // 이유: 서버는 빈 배열·3개 초과·공백 원소·중복·미등록 지역명을 **모두 같은 코드**
         // (400 INVALID_INPUT_VALUE)로 뭉쳐서 주고, 어느 필드가 왜 틀렸는지 알려주지 않는다.
         // 그대로 화면에 띄우면 사용자는 무엇을 고쳐야 할지 알 수 없다.
-        validate(regions)?.let { message ->
+        validate(regionCodes)?.let { message ->
             return Result.failure(AppError.Api(status = 400, code = null, message = message))
         }
 
-        val request = MemberLocationUpdateRequestDto(regions = regions)
+        val request = MemberLocationUpdateRequestDto(regionCodes = regionCodes)
         return apiCall { api.updateMyLocations(request) }
             .map { list -> list.map { it.toDomain() } }
     }
@@ -49,18 +49,17 @@ class MemberRepositoryImpl @Inject constructor(
             // 목록이 비어 있을 때만 null 이 되도록 좁혀 둔다.
             val active = locations.firstOrNull { it.active }
                 ?: locations.minByOrNull { it.sortOrder }
-            active?.region
+            active?.region?.display
         }
 
     /** 위반 사유를 사용자 문장으로 돌려준다. 문제가 없으면 null. */
-    private fun validate(regions: List<String>): String? = when {
-        regions.isEmpty() -> "동네를 최소 1개 선택해 주세요."
+    private fun validate(regionCodes: List<String>): String? = when {
+        regionCodes.isEmpty() -> "동네를 최소 1개 선택해 주세요."
         // 서버 상수 MAX_REGION_FILTER_SIZE = 2. 3개 이상이면 400이다.
-        regions.size > MAX_REGIONS -> "동네는 최대 ${MAX_REGIONS}개까지 설정할 수 있어요."
-        regions.any { it.isBlank() } -> "동네 이름이 비어 있어요."
-        // 서버는 지역명을 문자열 완전 일치로 다루므로 공백 차이도 다른 지역이 된다.
-        // 중복 판정도 같은 기준(원문 비교)으로 맞춘다.
-        regions.distinct().size != regions.size -> "같은 동네를 두 번 선택할 수 없어요."
+        regionCodes.size > MAX_REGIONS -> "동네는 최대 ${MAX_REGIONS}개까지 설정할 수 있어요."
+        regionCodes.any { it.isBlank() } -> "동네 코드가 비어 있어요."
+        // 코드는 공백·대소문자 변형이 없으므로 원문 비교로 중복을 판정하면 충분하다.
+        regionCodes.distinct().size != regionCodes.size -> "같은 동네를 두 번 선택할 수 없어요."
         else -> null
     }
 

@@ -23,13 +23,13 @@ class ProductRepositoryImpl @Inject constructor(
 ) : ProductRepository {
 
     override suspend fun getProducts(
-        regions: List<String>?,
+        regionCodes: List<String>?,
         cursor: Long?,
         size: Int,
     ): Result<ProductPage> =
         apiCall {
             api.getProducts(
-                regions = regions.normalizeRegions(),
+                regionCodes = regionCodes.normalizeRegionCodes(),
                 cursor = cursor,
                 size = size.normalizePageSize(),
             )
@@ -38,14 +38,14 @@ class ProductRepositoryImpl @Inject constructor(
     override suspend fun searchProducts(
         keyword: String?,
         categoryId: Long?,
-        regions: List<String>?,
+        regionCodes: List<String>?,
     ): Result<List<Product>> =
         apiCall {
             api.searchProducts(
                 // 빈 문자열을 그대로 보내면 "제목에 ''를 포함"이라는 무의미한 조건이 붙는다 → 아예 뺀다.
                 keyword = keyword?.trim()?.takeIf { it.isNotEmpty() },
                 categoryId = categoryId,
-                regions = regions.normalizeRegions(),
+                regionCodes = regionCodes.normalizeRegionCodes(),
             )
         }.map { list -> list.map { it.toDomain() } }
 
@@ -94,7 +94,7 @@ class ProductRepositoryImpl @Inject constructor(
      * (ProductApiContractTest `공백과 중복이 섞인 지역 목록은 정리되어 하나만 나간다` ↔
      *  CatalogRepositoryImplTest `지역 이름은 공백까지 서버 원문 그대로 보존된다`).
      */
-    private fun List<String>?.normalizeRegions(): List<String>? =
+    private fun List<String>?.normalizeRegionCodes(): List<String>? =
         this?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
             ?.distinct()

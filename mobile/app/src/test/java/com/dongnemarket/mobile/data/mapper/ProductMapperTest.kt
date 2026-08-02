@@ -5,6 +5,7 @@ import com.dongnemarket.mobile.data.remote.dto.ProductPageResponse
 import com.dongnemarket.mobile.data.remote.dto.ProductResponse
 import com.dongnemarket.mobile.data.remote.dto.ProductSummaryResponse
 import com.dongnemarket.mobile.domain.model.TradeStatus
+import com.dongnemarket.mobile.domain.model.RegionRef
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -309,15 +310,16 @@ class ProductMapperTest {
     }
 
     @Test
-    fun `region 이 null 로 와도 빈 문자열로 흡수돼 카드가 죽지 않는다`() {
+    fun `지역 3필드가 null 로 와도 빈 문자열로 흡수돼 카드가 죽지 않는다`() {
         // Given
-        val response = summaryResponse(region = null)
+        val response = summaryResponse(regionCode = null, regionName = null, regionFullName = null)
 
         // When
         val product = response.toDomain()
 
         // Then
-        assertEquals("", product.region)
+        assertEquals(RegionRef.EMPTY, product.region)
+        assertEquals("", product.region.display)
     }
 
     @Test
@@ -415,7 +417,9 @@ class ProductMapperTest {
         title: String = "아이폰 15 프로",
         price: BigDecimal = BigDecimal("800000.00"),
         tradeStatus: String? = "ON_SALE",
-        region: String? = "서울 강남구",
+        regionCode: String? = "11680",
+        regionName: String? = "강남구",
+        regionFullName: String? = "서울특별시 강남구",
         viewCount: Long = 12L,
         favoriteCount: Int = 3,
         thumbnailUrl: String? = null,
@@ -427,7 +431,9 @@ class ProductMapperTest {
         title = title,
         price = price,
         tradeStatus = tradeStatus,
-        region = region,
+        regionCode = regionCode,
+        regionName = regionName,
+        regionFullName = regionFullName,
         viewCount = viewCount,
         favoriteCount = favoriteCount,
         thumbnailUrl = thumbnailUrl,
@@ -444,7 +450,9 @@ class ProductMapperTest {
         description: String? = "생활기스 있습니다.",
         price: BigDecimal = BigDecimal("800000.00"),
         tradeStatus: String? = "ON_SALE",
-        region: String? = "서울 강남구",
+        regionCode: String? = "11680",
+        regionName: String? = "강남구",
+        regionFullName: String? = "서울특별시 강남구",
         viewCount: Long = 13L,
         favoriteCount: Int = 3,
         thumbnailUrl: String? = null,
@@ -459,7 +467,9 @@ class ProductMapperTest {
         description = description,
         price = price,
         tradeStatus = tradeStatus,
-        region = region,
+        regionCode = regionCode,
+        regionName = regionName,
+        regionFullName = regionFullName,
         viewCount = viewCount,
         favoriteCount = favoriteCount,
         thumbnailUrl = thumbnailUrl,

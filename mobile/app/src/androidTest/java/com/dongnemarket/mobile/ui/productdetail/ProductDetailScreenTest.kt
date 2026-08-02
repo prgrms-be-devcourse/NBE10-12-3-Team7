@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.dongnemarket.mobile.domain.model.ProductDetail
 import com.dongnemarket.mobile.domain.model.TradeStatus
+import com.dongnemarket.mobile.domain.model.RegionRef
 import com.dongnemarket.mobile.ui.productdetail.component.TAG_DETAIL_CHAT_BUTTON
 import com.dongnemarket.mobile.ui.productdetail.component.TAG_DETAIL_FAVORITE
 import com.dongnemarket.mobile.ui.theme.MarketOnTheme
@@ -50,7 +51,7 @@ class ProductDetailScreenTest {
         description = "케이스 씌워 사용해서 기스 없습니다.",
         price = BigDecimal(price),
         tradeStatus = tradeStatus,
-        region = "서울 강남구",
+        region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"),
         viewCount = 1_204L,
         favoriteCount = 13,
         thumbnailUrl = null,

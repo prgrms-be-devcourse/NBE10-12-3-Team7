@@ -6,6 +6,7 @@ import com.dongnemarket.mobile.domain.model.Member
 import com.dongnemarket.mobile.domain.model.MemberLocation
 import com.dongnemarket.mobile.domain.model.MemberRole
 import com.dongnemarket.mobile.domain.model.MemberStatus
+import com.dongnemarket.mobile.domain.model.RegionRef
 
 /**
  * DTO(서버 계약) → 도메인 모델 변환. **DTO 가 UI까지 새어 나가지 않게 하는 경계선**이다.
@@ -24,9 +25,18 @@ fun MemberResponseDto.toDomain(): Member = Member(
     createdAt = createdAt,
 )
 
-/** `MemberLocationResponse` → [MemberLocation]. 필드가 1:1이라 옮겨 담기만 한다. */
+/**
+ * `MemberLocationResponse` → [MemberLocation].
+ *
+ * ⚠️ 2026-07 개편으로 서버가 `region` 하나 대신 **3필드**를 준다.
+ * 여기서 [RegionRef] 로 묶어 도메인에 넘긴다 — 화면은 `location.region.display` 만 보면 된다.
+ */
 fun MemberLocationResponseDto.toDomain(): MemberLocation = MemberLocation(
-    region = region,
+    region = RegionRef(
+        code = regionCode,
+        name = regionName,
+        fullName = regionFullName,
+    ),
     sortOrder = sortOrder,
     active = active,
 )

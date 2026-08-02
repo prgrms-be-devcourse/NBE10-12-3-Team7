@@ -47,7 +47,7 @@ interface MemberRepository {
      *   뭉쳐서 주고 어느 필드가 틀렸는지 알려주지 않으므로, 구현체가 **호출 전에 미리 검증**해
      *   사람이 읽을 수 있는 실패 메시지를 돌려준다.
      */
-    suspend fun updateMyLocations(regions: List<String>): Result<List<MemberLocation>>
+    suspend fun updateMyLocations(regionCodes: List<String>): Result<List<MemberLocation>>
 
     /**
      * 대표 동네 이름만 뽑아 주는 편의 함수. **홈 헤더가 이것을 쓴다.**

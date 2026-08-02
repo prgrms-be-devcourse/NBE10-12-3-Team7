@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dongnemarket.mobile.domain.model.ProductDetail
+import com.dongnemarket.mobile.domain.model.RegionRef
 import com.dongnemarket.mobile.domain.model.TradeStatus
 import com.dongnemarket.mobile.ui.component.ErrorView
 import com.dongnemarket.mobile.ui.component.LoadingView
@@ -221,7 +222,7 @@ private fun ProductDetailBody(
             Text(
                 text = metaLine(
                     categoryName = state.categoryName,
-                    region = product.region,
+                    region = product.region.display,
                     viewCount = product.viewCount,
                 ),
                 style = MaterialTheme.typography.bodySmall,
@@ -278,7 +279,7 @@ private fun previewProduct(
     description = "작년에 구매했고 케이스 씌워 사용해서 기스 없습니다.\n애플펜슬 2세대 포함이고 직거래만 가능합니다.",
     price = BigDecimal(price),
     tradeStatus = tradeStatus,
-    region = "서울 강남구",
+    region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"),
     viewCount = 1_204L,
     favoriteCount = 13,
     thumbnailUrl = null,
