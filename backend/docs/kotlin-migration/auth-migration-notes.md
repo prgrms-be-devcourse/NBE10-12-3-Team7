@@ -1466,3 +1466,88 @@ non-null 로 조여 두면 메서드 진입 null 검사가 먼저 걸려 **Redis
 `RefreshTokenSaveNullContractTest`(null 입력 시 interaction, 정상 저장 경로)가 이를 고정한다.
 
 이 수정은 5단계 기능 확장이 아니라 **2·3단계에서 발견되지 않았던 Kotlin nullability 호환성 수정**이다.
+
+---
+
+# PR F — 핵심 인증 서비스 (6단계)
+
+대상 2개: `OAuthSignupTransaction`(트랜잭션 경계 컴포넌트) + `AuthService`(orchestrator).
+기준선은 PR #84 병합본(`556c3ac`). controller 3개(7단계)는 손대지 않았다.
+
+## 이 계층에서 조용히 깨지는 것
+
+| 무엇이 | 어떻게 | 대응 |
+|---|---|---|
+| 트랜잭션 propagation | `oauthLogin` 이 클래스 readOnly 를 상속받으면 제공자 네트워크 호출이 DB 커넥션을 붙든 채 일어난다 | `NOT_SUPPORTED` 를 어노테이션 값까지 테스트로 고정 |
+| 별도 빈 분리 | `signUp` 과 `reconcileAfterConflict` 를 같은 빈으로 합치면 self-invocation 으로 프록시가 못 가로채 **두 트랜잭션이 분리되지 않는다** | 별도 클래스·생성자 주입을 테스트로 고정 |
+| 협력자 호출 순서 | state 소비가 제공자 호출보다 뒤로 가면 실패한 시도의 state 가 재사용 가능해진다. 차단 확인이 회원 조회보다 뒤로 가면 차단 상태에서 자격증명 확인이 일어난다 | `inOrder` 테스트로 고정 |
+| null 실패 위치 | 파라미터를 non-null 로 조이면 진입 검사가 삽입돼 원본 첫 역참조 지점보다 실패가 앞당겨진다 | nullable + 원본 역참조 지점 `!!` |
+
+## 유지한 트랜잭션 계약
+
+| 메서드 | 계약 |
+|---|---|
+| `AuthService` 클래스 | `@Transactional(readOnly = true)` |
+| `signup`·`login`·`reissue`·`logout` | 메서드 `@Transactional` (REQUIRED 쓰기) |
+| `startAuthorization`·`oauthLogin` | `Propagation.NOT_SUPPORTED` |
+| `OAuthSignupTransaction.signUp` | `@Transactional` (가입 원자성, 실패 시 전체 롤백) |
+| `OAuthSignupTransaction.reconcileAfterConflict` | `@Transactional(readOnly = true)` (롤백 뒤 **새** 트랜잭션 재조회) |
+
+`javap -v` 로 6개 메서드 전부 원본과 동일한 위치·값임을 확인했고,
+`AuthCoreServiceTransactionContractTest` 가 고정한다.
+
+## null 실패 위치 — 원본에서 역참조 앞에 부수효과가 있는 자리 🔴
+
+원본 Java 는 null 인자를 **처음 역참조하는 지점**에서 NPE 로 실패하고, 그 앞의 부수효과는 이미 실행된
+상태였다. 이 위치가 특히 눈에 띄는 두 자리:
+
+| 메서드 | null 이전에 실행되는 것 | 원본 실패 지점 |
+|---|---|---|
+| `startAuthorization(null, …)` | state·code_verifier 난수 2회 + SHA-256 해시 | `client.provider()` |
+| `signUp(null)` | 더미 비밀번호 `encode()` 1회 | `identity.provider()` |
+| `generateNickname(null)` (private) | `StringBuilder` 생성 + **난수 10회 소비** | `provider.name()` |
+
+`generateNickname` 은 컴파일 에러로 드러났다 — `OAuthUserIdentity.provider` 가 nullable 인데 파라미터를
+non-null 로 두면 호출부에 `!!` 가 강제되어 실패가 진입 시점으로 앞당겨지고 `secureRandom` 소비량까지
+달라진다. 파라미터를 nullable 로 두고 원본 역참조 지점(`provider!!.name`)에 `!!` 를 뒀다.
+`AuthCoreServiceNullabilityContractTest` 가 리플렉션 + 컴파일 fixture + interaction 검증으로 고정한다.
+
+## Java 관용구와 다른 Kotlin 기본값 두 개
+
+| 원본 Java | 그대로 옮기면 | 실제 전환 |
+|---|---|---|
+| `String.toLowerCase()` (기본 로케일) | Kotlin `lowercase()` 는 `Locale.ROOT` 고정 | `lowercase(Locale.getDefault())` |
+| `String.getBytes()` (플랫폼 기본 charset) | Kotlin `toByteArray()` 는 UTF-8 고정 | `toByteArray(Charset.defaultCharset())` |
+
+둘 다 현재 값 범위(provider enum 이름, base64url ASCII)에서는 결과가 같지만, 의미를 바꾸지 않고 옮겼다.
+
+## 허용한 차이 — `reissue` 의 `findById` 전달 🔴
+
+`memberRepository.findById` 는 Spring Data `@NonNullApi` 라 Kotlin 에서 non-null `Long` 을 요구한다.
+원본 Java 는 null 을 그대로 전달했고 `findById` 내부 `Assert.notNull` 이 `IllegalArgumentException` 을
+던졌다. Kotlin 은 null 그대로 전달하는 형태가 불가능해 `requireNotNull(memberId)` 로 옮겼다 —
+같은 `IllegalArgumentException` 계열, 같은 문장 위치이며 메시지는 다르다(메시지 의존 코드는 금지라 무해).
+실제로는 `validateAndGetMemberId` 가 모든 실패 경로에서 `BusinessException` 을 던지고 non-null 을
+반환하므로 **이 지점은 도달 불가다.**
+
+`oauthLogin` 의 member 는 `MemberSocialAccount.member`(Kotlin 엔티티의 `Member?`)가 흘러들어오므로
+private 헬퍼(`issueTokens`·`validateActiveStatus`)도 nullable 파라미터 + 원본 역참조 지점 `!!` 로 맞췄다.
+
+## 테스트 작성 관행 — Mockito 매처와 Kotlin non-null 파라미터
+
+Mockito 매처(`any`·`eq`·`captor.capture()`)는 null 을 반환하는데, Kotlin **non-null 파라미터** 자리에
+넣으면 매처가 등록되기도 전에 호출부 intrinsic null 검사("must not be null")가 터진다.
+`ArgumentCaptor.forClass` 반환이 platform 제네릭이라 헬퍼의 타입 추론까지 platform 으로 오염되는 것도
+같은 계열이다. 매처를 등록한 뒤 타입만 맞춘 값을 돌려주는 헬퍼(`anyObj`/`eqObj`/`cap`,
+mockito-kotlin 과 같은 방식) + captor 변수의 명시적 Kotlin 타입 선언으로 우회했다.
+
+## 검증
+
+- `javap -public` 원본 대조: 두 클래스 모두 public 표면 동일 (유일한 추가는 `private const` 로 인한
+  `Companion` static 필드 — 5단계 서비스들과 동일 패턴)
+- 생성자 13개 파라미터 순서, `@Value` 2개 primitive `long`/`int` 유지
+- 신규 계약 테스트 46건: JVM 표면 13 + 트랜잭션 8 + 호출 순서 15 + nullability 10
+- 전체 `test` 923(기존 877 + 신규 46) / 실패·오류 0 / skip 0
+- `integrationTest` 44 / 실패·오류 0 / 비활성 1(기존 `OAuthEndpointRateLimitOrderTest`)
+- `OAuthSignupTransactionConcurrencyTest` 2/2 통과 — 동시 가입 레이스에서 reconcile 경로 실동작 확인
+- `bootJar` 성공, strict ktlint(1.5.0) 위반 0
