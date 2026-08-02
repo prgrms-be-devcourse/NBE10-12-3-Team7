@@ -1,11 +1,16 @@
 // 공통 설정과 계약. 모든 시나리오가 여기를 거친다.
 
+import http from 'k6/http';
 import exec from 'k6/execution';
+import { Trend } from 'k6/metrics';
 
 export const BASE_URL = __ENV.BASE_URL || 'http://localhost';
 
-// 무부하 기준값(perf 볼륨 테스트 실측, 상품 10만 건 기준). 판정의 기준선이다.
-// 이 환경의 절대 수치는 다른 곳과 비교할 수 없으므로 **무부하 대비 배수**로 판정한다.
+// perf 볼륨 테스트 실측(상품 10만 건, 맥 호스트 curl 기준).
+// **판정에는 쓰지 않는다.** 측정 경로가 바뀌면(컨테이너 경유·LAN·유선) 같은 앱이어도 무부하가
+// 달라지기 때문이다 — 호스트 16.9ms 대 k6 컨테이너 23.9ms 대 LAN 25.6ms 로 실측됐다.
+// 판정 기준선은 setup() 이 그 회차에 직접 재고, 이 값은 결과에 나란히 찍어
+// "이 회차의 경로 비용이 얼마인가"를 읽는 참고값으로만 남긴다.
 export const BASELINE_MS = {
   list: 13,
   detail: 12,
@@ -19,10 +24,58 @@ export const TREND_STATS = ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max
 // 몇 배까지 허용할지. 기본 3배.
 export const ALLOWED_RATIO = Number(__ENV.ALLOWED_RATIO || 3);
 
-export function thresholdsFor(baselineMs) {
+/**
+ * 판정 지표. 절대 ms 가 아니라 **그 회차의 무부하 대비 배수**를 기록한다.
+ *
+ * 왜 이렇게 하나: k6 는 `options.thresholds` 를 init 컨텍스트에서 읽는다 — setup() 보다
+ * 먼저다. 그래서 "잰 무부하 × 3" 을 임계값에 넣는 것은 순서상 불가능하다.
+ * 임계값을 계산하는 대신 지표 쪽을 배수로 바꾼다. 임계값은 3 으로 고정이고, 측정 경로가
+ * 바뀌어도 무부하가 알아서 따라온다 — 맥 회차와 노트북 회차를 같은 잣대로 비교할 수 있다.
+ */
+export const latencyRatio = new Trend('latency_ratio');
+
+// 무부하 표본 수. **근거 있는 실측값이 아니라 임의로 정한 값이다.**
+// 앞 3 회는 콜드 스타트(JIT·커넥션 풀·버퍼풀 워밍업)라 버리고 남은 7 개의 중앙값을 쓴다.
+// 평균이 아니라 중앙값인 이유는 한 번 튄 값에 기준선 전체가 끌려가지 않게 하기 위해서다.
+const BASELINE_WARMUP = 3;
+const BASELINE_SAMPLES = 7;
+
+/**
+ * setup() 에서 부른다. VU 1 로 무부하를 재서 **이 회차의 기준선**을 만든다.
+ *
+ *   probes: [{ key: 'list', url: `${BASE_URL}/api/products?size=30` }, ...]
+ *   반환:   { list: 23.9, ... }  (ms)
+ */
+export function measureBaseline(probes) {
+  const out = {};
+  for (const p of probes) {
+    const samples = [];
+    for (let i = 0; i < BASELINE_WARMUP + BASELINE_SAMPLES; i++) {
+      const res = http.get(p.url, { tags: { name: `baseline_${p.key}` } });
+      // 여기에 429 가 섞이면 본문 없는 3ms 가 기준선이 되고, 이후 모든 판정이 무의미해진다.
+      expectOk(res, `baseline_${p.key}`);
+      if (i >= BASELINE_WARMUP) samples.push(res.timings.duration);
+    }
+    samples.sort((a, b) => a - b);
+    out[p.key] = samples[Math.floor(samples.length / 2)];
+  }
+  return out;
+}
+
+/** 요청 하나를 무부하 대비 배수로 환산해 기록한다. */
+export function recordRatio(res, baselineMs) {
+  latencyRatio.add(res.timings.duration / baselineMs);
+}
+
+/**
+ * 판정 기준. 시나리오마다 따로 쓰면 회차 비교가 어긋나므로 한 곳에서 만든다.
+ * 절대 ms 임계값을 쓰던 예전 `thresholdsFor()` 는 제거했다 — 두 가지 판정 경로가 남아 있으면
+ * 어느 쪽으로 재판정됐는지 나중에 알 수 없다.
+ */
+export function ratioThresholds() {
   return {
     http_req_failed: ['rate<0.01'],
-    http_req_duration: [`p(95)<${Math.round(baselineMs * ALLOWED_RATIO)}`],
+    latency_ratio: [`p(95)<${ALLOWED_RATIO}`],
   };
 }
 
@@ -39,7 +92,7 @@ export function expectOk(res, name) {
   if (res.status === 429) {
     exec.test.abort(
       `${name} 이 429 다. 요청 제한(IP 당 기본 초당 6건)에 걸렸다 — 이 상태로 측정하면 ` +
-      `앱이 아니라 제한기를 재게 된다. 맥에서 제한을 올리고 다시 실행할 것:\n` +
+      `앱이 아니라 제한기를 재게 된다. 맥의 infra/onprem 폴더에서 제한을 올리고 다시 실행할 것:\n` +
       `  RATE_LIMIT_CAPACITY=100000 docker compose --env-file .env up -d app`
     );
   }

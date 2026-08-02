@@ -126,6 +126,12 @@ services:
         condition: service_started
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      # 요청 제한(IP 당 슬라이딩 윈도우, RateLimitFilter). 기본값은 앱 기본과 동일한
+      # 10초당 60건 = 초당 6건이라 평소 스택 동작은 변하지 않는다. 부하테스트에서
+      # "앱이 아니라 제한기를 재는" 것을 피할 때만 이 통로로 크게 올려 재기동한다.
+      #   RATE_LIMIT_CAPACITY=100000 docker compose --env-file .env up -d app
+      RATE_LIMIT_CAPACITY: ${RATE_LIMIT_CAPACITY:-60}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-10}
       # [임시] Kotlin 전환 중 auctions·escrows·manner_scores 엔티티에 대응하는 Flyway 마이그레이션이
       # 아직 없어 prod의 ddl-auto=validate가 기동을 막는다. 온프레미스에서만 .env로 update를 주입해
       # Hibernate가 누락 테이블을 만들게 한다. 기본값은 validate — 클라우드(EC2) 배포 의미는 그대로다.
