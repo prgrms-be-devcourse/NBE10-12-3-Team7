@@ -115,12 +115,22 @@ class AuthService(
         val agreedAt = LocalDateTime.now()
         memberAgreementRepository.save(
             MemberAgreement.of(
-                member, AgreementType.TERMS_OF_SERVICE, AGREEMENT_VERSION, agreedAt, ipAddress, userAgent,
+                member,
+                AgreementType.TERMS_OF_SERVICE,
+                AGREEMENT_VERSION,
+                agreedAt,
+                ipAddress,
+                userAgent,
             ),
         )
         memberAgreementRepository.save(
             MemberAgreement.of(
-                member, AgreementType.PERSONAL_INFO_COLLECTION, AGREEMENT_VERSION, agreedAt, ipAddress, userAgent,
+                member,
+                AgreementType.PERSONAL_INFO_COLLECTION,
+                AGREEMENT_VERSION,
+                agreedAt,
+                ipAddress,
+                userAgent,
             ),
         )
     }
@@ -185,7 +195,12 @@ class AuthService(
 
         val value =
             OAuthAuthorizationState(
-                client.provider(), browserCorrelationHash, redirectUri, codeVerifier, oidcNonce, Instant.now(),
+                client.provider(),
+                browserCorrelationHash,
+                redirectUri,
+                codeVerifier,
+                oidcNonce,
+                Instant.now(),
             )
         val issued = oauthStateRepository.issue(state, value, oauthStateTtl, oauthMaxPendingPerBrowser)
         if (!issued) {
@@ -248,7 +263,10 @@ class AuthService(
         // 않는다. 사용자는 새 OAuth 흐름을 처음부터 다시 시작해야 한다.
         val identity =
             client.resolveIdentity(
-                code, authState.codeVerifier, authState.redirectUri, authState.oidcNonce,
+                code,
+                authState.codeVerifier,
+                authState.redirectUri,
+                authState.oidcNonce,
             )
 
         val member =
@@ -304,12 +322,14 @@ class AuthService(
      */
     @Transactional
     fun reissue(refreshToken: String?): TokenResponse {
-        // findById 는 Spring @NonNullApi 라 non-null Long 을 요구한다. validateAndGetMemberId 는 모든
-        // 실패 경로에서 BusinessException 을 던지고 내부 non-null local 을 반환하므로 이 !! 는 도달 불가다.
+        // findById 는 Spring @NonNullApi 라 non-null Long 을 요구한다. 원본 Java 는 이 값이 null 이면
+        // findById 내부 Assert.notNull 이 IllegalArgumentException 을 던졌으므로 같은 예외 계열인
+        // requireNotNull 을 쓴다. 실제로는 validateAndGetMemberId 가 모든 실패 경로에서
+        // BusinessException 을 던지고 non-null 을 반환하므로 이 지점은 도달 불가다.
         val memberId = refreshTokenService.validateAndGetMemberId(refreshToken)
         val member =
             memberRepository
-                .findById(memberId!!)
+                .findById(requireNotNull(memberId))
                 .orElseThrow { BusinessException(ErrorCode.MEMBER_NOT_FOUND) }
         validateActiveStatus(member)
 
