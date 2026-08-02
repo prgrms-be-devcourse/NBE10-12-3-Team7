@@ -19,6 +19,9 @@ class ProductUpdateRequest(
     val regionCode: String? = null,
     @field:NotEmpty(message = "상품 이미지는 1장 이상 등록해야 합니다.")
     @field:Size(max = 5, message = "상품 이미지는 최대 5장까지 등록할 수 있습니다.")
-    val imageUrls: List<@NotBlank(message = "상품 이미지 URL은 공백일 수 없습니다.") String>? = null,
+    val imageUrls: List<
+        @NotBlank(message = "상품 이미지 URL은 공백일 수 없습니다.")
+        String,
+    >? = null,
     val thumbnailIndex: Int = 0,
 )
