@@ -6,6 +6,7 @@ import com.dongnemarket.mobile.data.remote.dto.ProductSummaryResponse
 import com.dongnemarket.mobile.domain.model.Product
 import com.dongnemarket.mobile.domain.model.ProductDetail
 import com.dongnemarket.mobile.domain.model.ProductPage
+import com.dongnemarket.mobile.domain.model.RegionRef
 import com.dongnemarket.mobile.domain.model.TradeStatus
 
 /**
@@ -28,12 +29,27 @@ fun ProductSummaryResponse.toDomain(): Product = Product(
     title = title,
     price = price,
     tradeStatus = TradeStatus.from(tradeStatus),
-    // region 은 계약상 항상 오지만, null 이 와도 카드가 죽지 않게 빈 문자열로 흡수한다.
-    region = region.orEmpty(),
+    region = toRegionRef(regionCode, regionName, regionFullName),
     viewCount = viewCount,
     favoriteCount = favoriteCount,
     thumbnailUrl = thumbnailUrl.toAbsoluteImageUrl(),
     hidden = hidden,
+)
+
+/**
+ * 서버가 흩어 보내는 지역 3필드를 한 덩어리로 묶는다.
+ *
+ * 셋 다 계약상 항상 오지만 null 을 빈 문자열로 흡수한다 — 지역 하나 때문에 목록 전체가
+ * 죽는 것보다 그 칸만 비는 편이 낫다. 전부 비면 [RegionRef.EMPTY] 와 같은 값이 된다.
+ */
+private fun toRegionRef(
+    code: String?,
+    name: String?,
+    fullName: String?,
+): RegionRef = RegionRef(
+    code = code.orEmpty(),
+    name = name.orEmpty(),
+    fullName = fullName.orEmpty(),
 )
 
 /** 커서 페이징 래퍼 → 도메인 페이지. */
@@ -54,7 +70,7 @@ fun ProductResponse.toDomain(): ProductDetail = ProductDetail(
     description = description.orEmpty(),
     price = price,
     tradeStatus = TradeStatus.from(tradeStatus),
-    region = region.orEmpty(),
+    region = toRegionRef(regionCode, regionName, regionFullName),
     viewCount = viewCount,
     favoriteCount = favoriteCount,
     thumbnailUrl = thumbnailUrl.toAbsoluteImageUrl(),

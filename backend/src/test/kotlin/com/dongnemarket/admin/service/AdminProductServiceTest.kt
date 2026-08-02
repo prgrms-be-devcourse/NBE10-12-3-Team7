@@ -37,7 +37,18 @@ class AdminProductServiceTest {
     lateinit var adminProductService: AdminProductService
 
     /** Product.create 는 아직 Java 라 파라미터가 플랫폼 타입이다 → Kotlin 에서도 null 을 그대로 넘길 수 있다. */
-    private fun existingProduct(): Product = Product.create(null, null, "부적절 상품", "설명", BigDecimal("10000"), yeoksam())
+    // [변경 · product Kotlin 전환] 위 전제가 더는 성립하지 않는다. Product.create 가 Kotlin 이 되어
+    // 파라미터가 non-null 이므로 null 대신 최소 인스턴스를 넣는다(products 의 member_id·category_id 는
+    // nullable = false). 삭제 로직만 검증하므로 판매자·카테고리의 내용은 여전히 쓰지 않는다.
+    private fun existingProduct(): Product =
+        Product.create(
+            Member.createUser("admin-product@example.com", "encodedPassword", "판매자"),
+            Category("부적절상품카테고리"),
+            "부적절 상품",
+            "설명",
+            BigDecimal("10000"),
+            yeoksam(),
+        )
 
     @Nested
     @DisplayName("성공 케이스")

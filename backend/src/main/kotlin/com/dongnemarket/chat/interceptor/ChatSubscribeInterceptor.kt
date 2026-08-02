@@ -24,7 +24,10 @@ import java.security.Principal
 class ChatSubscribeInterceptor(
     private val chatService: ChatService,
 ) : ChannelInterceptor {
-    override fun preSend(message: Message<*>, channel: MessageChannel): Message<*>? {
+    override fun preSend(
+        message: Message<*>,
+        channel: MessageChannel,
+    ): Message<*>? {
         val accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor::class.java)
         if (accessor == null || StompCommand.SUBSCRIBE != accessor.command) {
             return message
@@ -55,7 +58,10 @@ class ChatSubscribeInterceptor(
         return roomSegment.toLongOrNull()
     }
 
-    private fun requireMemberId(message: Message<*>, user: Principal?): Long {
+    private fun requireMemberId(
+        message: Message<*>,
+        user: Principal?,
+    ): Long {
         val principal = (user as? Authentication)?.principal
         if (principal !is Long) {
             throw MessagingException(message, "인증이 필요합니다.")

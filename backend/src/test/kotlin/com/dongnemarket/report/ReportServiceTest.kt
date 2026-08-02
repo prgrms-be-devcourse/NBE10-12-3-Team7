@@ -1,5 +1,6 @@
 package com.dongnemarket.report
 
+import com.dongnemarket.category.entity.Category
 import com.dongnemarket.global.exception.BusinessException
 import com.dongnemarket.global.exception.ErrorCode
 import com.dongnemarket.member.entity.Member
@@ -62,7 +63,9 @@ class ReportServiceTest {
 
     private fun product(ownerId: Long): Product {
         val owner = member(ownerId, "owner-$ownerId@example.com", "owner$ownerId")
-        return Product.create(owner, null, "테스트 상품", "설명", BigDecimal.valueOf(10000), yeoksam())
+        // [변경 · product Kotlin 전환] category 인자가 null 이었으나 Product.create 가 non-null 이 되어
+        // 최소 인스턴스로 교체한다. 이 테스트는 카테고리 내용을 쓰지 않는다.
+        return Product.create(owner, Category("신고테스트카테고리"), "테스트 상품", "설명", BigDecimal.valueOf(10000), yeoksam())
     }
 
     private fun yeoksam(): Region {

@@ -1,6 +1,7 @@
 # 온프레미스(로컬 전체 컨테이너) 배포. nginx·Next·Spring Boot·MySQL·Redis를 한 호스트에 자기완결로 올린다.
-# 앱/프론트 이미지는 사설 레지스트리 Zot에서 pull한다(클라우드의 ECR 대응). DB도 같은 스택의 MySQL 컨테이너.
-# 앱은 prod 프로파일 + FILE_STORAGE_TYPE=s3(같은 스택의 RustFS). 클라우드와의 차이는 프로파일이 아니라
+# AWS 미러(infra/cloud-terraform/, 코드 전용)와 달리 실제 배포·운영하는 스택이다.
+# 앱/프론트 이미지는 사설 레지스트리 Zot에서 pull한다(미러의 ECR 대응). DB도 같은 스택의 MySQL 컨테이너.
+# 앱은 prod 프로파일 + FILE_STORAGE_TYPE=s3(같은 스택의 RustFS). 미러와의 차이는 프로파일이 아니라
 # env(스토리지 endpoint·DB 주소)와 이미지 출처(Zot ↔ ECR)뿐이다.
 # (설계·경계: ../infra.md)
 #
@@ -134,7 +135,7 @@ services:
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-10}
       # [임시] Kotlin 전환 중 auctions·escrows·manner_scores 엔티티에 대응하는 Flyway 마이그레이션이
       # 아직 없어 prod의 ddl-auto=validate가 기동을 막는다. 온프레미스에서만 .env로 update를 주입해
-      # Hibernate가 누락 테이블을 만들게 한다. 기본값은 validate — 클라우드(EC2) 배포 의미는 그대로다.
+      # Hibernate가 누락 테이블을 만들게 한다. 기본값은 validate — AWS 미러 쪽 의미는 그대로다.
       # 전환 완료 후 V7 마이그레이션이 들어오면 이 줄과 .env의 값을 함께 제거할 것.
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-validate}
       # 데이터 적재 스위치. 프로파일이 아니라 env로 켠다 — 프로파일은 "어느 환경인가"만 표현한다.

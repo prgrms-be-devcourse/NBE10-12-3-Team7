@@ -10,6 +10,7 @@ import com.dongnemarket.mobile.domain.model.Member
 import com.dongnemarket.mobile.domain.model.MemberLocation
 import com.dongnemarket.mobile.domain.model.MemberRole
 import com.dongnemarket.mobile.domain.model.MemberStatus
+import com.dongnemarket.mobile.domain.model.RegionRef
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -161,8 +162,8 @@ class MemberRepositoryImplTest {
         coEvery { api.getMyLocations() } returns ApiEnvelope(
             status = 200,
             data = listOf(
-                MemberLocationResponseDto(region = "서울 강남구", sortOrder = 0, active = true),
-                MemberLocationResponseDto(region = "서울 서초구", sortOrder = 1, active = false),
+                MemberLocationResponseDto(regionCode = "11680", regionName = "강남구", regionFullName = "서울특별시 강남구", sortOrder = 0, active = true),
+                MemberLocationResponseDto(regionCode = "11650", regionName = "서초구", regionFullName = "서울특별시 서초구", sortOrder = 1, active = false),
             ),
         )
 
@@ -170,7 +171,7 @@ class MemberRepositoryImplTest {
         val result = repository.getActiveRegionName()
 
         // Then
-        assertEquals("서울 강남구", result.getOrThrow())
+        assertEquals("강남구", result.getOrThrow())
     }
 
     @Test
@@ -179,8 +180,8 @@ class MemberRepositoryImplTest {
         coEvery { api.getMyLocations() } returns ApiEnvelope(
             status = 200,
             data = listOf(
-                MemberLocationResponseDto(region = "서울 서초구", sortOrder = 1, active = false),
-                MemberLocationResponseDto(region = "서울 강남구", sortOrder = 0, active = false),
+                MemberLocationResponseDto(regionCode = "11650", regionName = "서초구", regionFullName = "서울특별시 서초구", sortOrder = 1, active = false),
+                MemberLocationResponseDto(regionCode = "11680", regionName = "강남구", regionFullName = "서울특별시 강남구", sortOrder = 0, active = false),
             ),
         )
 
@@ -188,7 +189,7 @@ class MemberRepositoryImplTest {
         val result = repository.getActiveRegionName()
 
         // Then: 폴백이 없으면 동네가 있는 사용자가 설정 화면으로 쫓겨난다
-        assertEquals("서울 강남구", result.getOrThrow())
+        assertEquals("강남구", result.getOrThrow())
     }
 
     // ── 3. 내 동네 저장: 서버에 보내기 전에 우리가 먼저 막는다 ─────────────────────
@@ -198,7 +199,7 @@ class MemberRepositoryImplTest {
         // Given: 사용자가 아무것도 고르지 않고 저장을 눌렀다
 
         // When
-        repository.updateMyLocations(regions = emptyList())
+        repository.updateMyLocations(regionCodes = emptyList())
 
         // Then: 왕복 없이 즉시 막는다
         coVerify(exactly = 0) { api.updateMyLocations(any()) }
@@ -207,7 +208,7 @@ class MemberRepositoryImplTest {
     @Test
     fun `동네를 0개로 저장하려 하면 사람이 읽을 수 있는 400 실패를 준다`() = runTest {
         // Given / When
-        val result = repository.updateMyLocations(regions = emptyList())
+        val result = repository.updateMyLocations(regionCodes = emptyList())
 
         // Then: 서버가 주는 INVALID_INPUT_VALUE 는 무엇이 틀렸는지 알려주지 않으므로 여기서 문장을 만든다
         assertEquals(
@@ -220,7 +221,7 @@ class MemberRepositoryImplTest {
     fun `동네를 3개 보내면 최대 2개라고 안내하며 실패한다`() = runTest {
         // Given / When
         val result = repository.updateMyLocations(
-            regions = listOf("서울 강남구", "서울 서초구", "서울 송파구"),
+            regionCodes = listOf("11680", "11650", "11710"),
         )
 
         // Then
@@ -234,7 +235,7 @@ class MemberRepositoryImplTest {
     fun `같은 동네를 두 번 보내면 중복이라고 안내하며 실패한다`() = runTest {
         // Given / When
         val result = repository.updateMyLocations(
-            regions = listOf("서울 강남구", "서울 강남구"),
+            regionCodes = listOf("11680", "11680"),
         )
 
         // Then
@@ -245,13 +246,13 @@ class MemberRepositoryImplTest {
     }
 
     @Test
-    fun `공백뿐인 동네 이름이 섞이면 실패한다`() = runTest {
+    fun `공백뿐인 동네 코드가 섞이면 실패한다`() = runTest {
         // Given / When
-        val result = repository.updateMyLocations(regions = listOf("서울 강남구", "  "))
+        val result = repository.updateMyLocations(regionCodes = listOf("11680", "  "))
 
         // Then
         assertEquals(
-            "동네 이름이 비어 있어요.",
+            "동네 코드가 비어 있어요.",
             (result.exceptionOrNull() as AppError).userMessage,
         )
     }
@@ -259,7 +260,7 @@ class MemberRepositoryImplTest {
     @Test
     fun `선검증 실패는 400 상태의 AppError Api 로 온다`() = runTest {
         // Given / When
-        val result = repository.updateMyLocations(regions = emptyList())
+        val result = repository.updateMyLocations(regionCodes = emptyList())
 
         // Then: 네트워크 실패와 구분되도록 상태 코드를 붙여 둔다
         val error = result.exceptionOrNull()
@@ -273,15 +274,15 @@ class MemberRepositoryImplTest {
         coEvery { api.updateMyLocations(capture(sentRequest)) } returns ApiEnvelope(
             status = 200,
             data = listOf(
-                MemberLocationResponseDto(region = "서울 강남구", sortOrder = 0, active = true),
+                MemberLocationResponseDto(regionCode = "11680", regionName = "강남구", regionFullName = "서울특별시 강남구", sortOrder = 0, active = true),
             ),
         )
 
         // When
-        repository.updateMyLocations(regions = listOf("서울 강남구"))
+        repository.updateMyLocations(regionCodes = listOf("11680"))
 
         // Then: 0번 원소가 서버에서 대표 동네가 되므로 순서를 바꿔서도 안 된다
-        assertEquals(listOf("서울 강남구"), sentRequest.captured.regions)
+        assertEquals(listOf("11680"), sentRequest.captured.regionCodes)
     }
 
     @Test
@@ -290,19 +291,19 @@ class MemberRepositoryImplTest {
         coEvery { api.updateMyLocations(any()) } returns ApiEnvelope(
             status = 200,
             data = listOf(
-                MemberLocationResponseDto(region = "서울 강남구", sortOrder = 0, active = true),
-                MemberLocationResponseDto(region = "서울 서초구", sortOrder = 1, active = false),
+                MemberLocationResponseDto(regionCode = "11680", regionName = "강남구", regionFullName = "서울특별시 강남구", sortOrder = 0, active = true),
+                MemberLocationResponseDto(regionCode = "11650", regionName = "서초구", regionFullName = "서울특별시 서초구", sortOrder = 1, active = false),
             ),
         )
 
         // When
-        val result = repository.updateMyLocations(listOf("서울 강남구", "서울 서초구"))
+        val result = repository.updateMyLocations(listOf("11680", "11650"))
 
         // Then
         assertEquals(
             listOf(
-                MemberLocation(region = "서울 강남구", sortOrder = 0, active = true),
-                MemberLocation(region = "서울 서초구", sortOrder = 1, active = false),
+                MemberLocation(region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"), sortOrder = 0, active = true),
+                MemberLocation(region = RegionRef(code = "11650", name = "서초구", fullName = "서울특별시 서초구"), sortOrder = 1, active = false),
             ),
             result.getOrNull(),
         )

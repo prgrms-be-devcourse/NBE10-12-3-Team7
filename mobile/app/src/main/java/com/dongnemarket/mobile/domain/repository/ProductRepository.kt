@@ -18,7 +18,7 @@ interface ProductRepository {
     /**
      * 홈 상품 목록 — **커서 페이징**(무한스크롤).
      *
-     * @param regions 지역 '이름' 문자열 목록(`"서울 강남구"`). regionId 가 아니다.
+     * @param regionCodes 지역 **코드** 목록(`"11680"`). 2026-07 개편 전의 이름 문자열이 아니다.
      *   서버 상한이 **2개**이므로 3개 이상을 넘기면 구현체가 앞의 2개만 보낸다(넘기면 400).
      *   null/빈 리스트면 전국 조회.
      * @param cursor 마지막으로 받은 `productId`. **첫 페이지는 null.**
@@ -29,7 +29,7 @@ interface ProductRepository {
      * 정렬은 `id DESC`(최신 등록순) 고정 — 정렬 옵션 파라미터는 존재하지 않는다.
      */
     suspend fun getProducts(
-        regions: List<String>? = null,
+        regionCodes: List<String>? = null,
         cursor: Long? = null,
         size: Int = 30,
     ): Result<ProductPage>
@@ -40,17 +40,17 @@ interface ProductRepository {
      * 그래서 반환 타입이 [ProductPage] 가 아니라 `List<Product>` 다(비대칭이지만 서버 사실이다).
      * 무한스크롤을 붙일 수 없으므로 화면에서 표시 개수를 잘라 렌더할 것.
      *
-     * 카테고리 칩도 이 함수로 처리한다. `GET /api/categories/{id}/products` 는 `regions` 를
+     * 카테고리 칩도 이 함수로 처리한다. `GET /api/categories/{id}/products` 는 지역 필터를
      * 받지 못해 "내 동네 + 카테고리" 조합이 불가능해서 쓰지 않는다.
      *
      * @param keyword 제목·설명 부분일치(대소문자 무시). 공백/빈 문자열은 구현체가 빼고 보낸다.
      * @param categoryId 완전일치. 존재하지 않는 id 는 에러가 아니라 **결과 0건**이다.
-     * @param regions [getProducts] 와 같은 규칙(이름 문자열, 최대 2개).
+     * @param regionCodes [getProducts] 와 같은 규칙(지역 **코드**, 최대 2개).
      */
     suspend fun searchProducts(
         keyword: String? = null,
         categoryId: Long? = null,
-        regions: List<String>? = null,
+        regionCodes: List<String>? = null,
     ): Result<List<Product>>
 
     /**

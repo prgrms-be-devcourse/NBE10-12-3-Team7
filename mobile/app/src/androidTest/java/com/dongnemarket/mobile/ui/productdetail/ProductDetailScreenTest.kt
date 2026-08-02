@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.dongnemarket.mobile.domain.model.ProductDetail
 import com.dongnemarket.mobile.domain.model.TradeStatus
+import com.dongnemarket.mobile.domain.model.RegionRef
 import com.dongnemarket.mobile.ui.productdetail.component.TAG_DETAIL_CHAT_BUTTON
 import com.dongnemarket.mobile.ui.productdetail.component.TAG_DETAIL_FAVORITE
 import com.dongnemarket.mobile.ui.theme.MarketOnTheme
@@ -50,7 +51,7 @@ class ProductDetailScreenTest {
         description = "케이스 씌워 사용해서 기스 없습니다.",
         price = BigDecimal(price),
         tradeStatus = tradeStatus,
-        region = "서울 강남구",
+        region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"),
         viewCount = 1_204L,
         favoriteCount = 13,
         thumbnailUrl = null,
@@ -267,6 +268,25 @@ class ProductDetailScreenTest {
 
         // Then
         composeRule.onNodeWithTag(TAG_DETAIL_CHAT_BUTTON).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `내가_등록한_상품이면_찜_하트도_비활성이다`() {
+        // Given: 서버가 400 CANNOT_FAVORITE_OWN_PRODUCT 로 거부하는 조합.
+        //        2026-08-02 에뮬 검수에서 발견 — 그전에는 하트만 눌렸고 낙관적 갱신이
+        //        켜졌다가 서버 400 으로 롤백됐다. 동작은 안전했지만 누를 수 있는데 실패하는 UX였다.
+        val state = ProductDetailUiState.Success(
+            product = product(),
+            isFavorite = false,
+            favoriteCount = 13,
+            isMyProduct = true,
+        )
+
+        // When
+        상세화면을_띄운다(state)
+
+        // Then: 채팅 버튼과 같은 기준으로 잠겨야 한다
+        composeRule.onNodeWithTag(TAG_DETAIL_FAVORITE).assertIsNotEnabled()
     }
 
     @Test

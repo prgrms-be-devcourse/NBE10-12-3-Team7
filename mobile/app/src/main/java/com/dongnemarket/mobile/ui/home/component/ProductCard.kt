@@ -16,6 +16,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.dongnemarket.mobile.domain.model.Product
+import com.dongnemarket.mobile.domain.model.RegionRef
 import com.dongnemarket.mobile.domain.model.TradeStatus
 import com.dongnemarket.mobile.ui.component.NetworkImage
 import com.dongnemarket.mobile.ui.component.ProductPrice
@@ -80,7 +81,7 @@ fun ProductCard(
             ProductPrice(price = product.price)
 
             Text(
-                text = product.region,
+                text = product.region.display,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -132,7 +133,7 @@ private fun previewProduct(
     title = title,
     price = price,
     tradeStatus = tradeStatus,
-    region = "서울 강남구",
+    region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"),
     viewCount = 42L,
     favoriteCount = 3,
     thumbnailUrl = null,

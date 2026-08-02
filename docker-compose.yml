@@ -7,9 +7,8 @@ name: dongnemarket
 # ※ 최초 up 시 ollama-pull이 모델(qwen3:1.7b, ~1.4GB)을 받느라 몇 분 걸린다(볼륨에 남아 이후엔 즉시).
 #   덕분에 AI 어시스턴트를 쓰려고 Ollama 앱을 따로 설치할 필요가 없다.
 #
-# 전체 컨테이너 배포(nginx+next+app+mysql)는 지형별로 분리돼 있다:
-#   온프레미스 → infra/onprem/     (로컬 전체 스택, 이미지 로컬 빌드)
-#   클라우드   → infra/cloud/      (EC2 3대, ECR pull)
+# 온프레미스 전체 스택(실운영) → infra/onprem/            (로컬 전체 스택, 이미지 로컬 빌드)
+# AWS 관리형 미러(코드 전용)   → infra/cloud-terraform/   (OpenTofu, apply 안 함)
 # 경계 설계: infra/infra.md
 services:
   mysql:

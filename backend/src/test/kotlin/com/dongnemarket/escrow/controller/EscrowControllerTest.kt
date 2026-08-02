@@ -114,7 +114,7 @@ class EscrowControllerTest {
             .andExpect(jsonPath("$.data.buyerId").value(buyer.id))
             .andExpect(jsonPath("$.data.sellerId").value(seller.id))
 
-        val reserved = productRepository.findById(product.id).orElseThrow()
+        val reserved = productRepository.findById(product.id!!).orElseThrow()
         assertThat(reserved.tradeStatus).isEqualTo(TradeStatus.RESERVED)
     }
 
@@ -138,7 +138,7 @@ class EscrowControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("DONE"))
 
-        val completed = productRepository.findById(product.id).orElseThrow()
+        val completed = productRepository.findById(product.id!!).orElseThrow()
         assertThat(completed.tradeStatus).isEqualTo(TradeStatus.COMPLETED)
     }
 
@@ -162,7 +162,7 @@ class EscrowControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("CANCELED"))
 
-        val onSale = productRepository.findById(product.id).orElseThrow()
+        val onSale = productRepository.findById(product.id!!).orElseThrow()
         assertThat(onSale.tradeStatus).isEqualTo(TradeStatus.ON_SALE)
     }
 

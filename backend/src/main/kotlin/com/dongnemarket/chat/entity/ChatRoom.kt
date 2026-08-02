@@ -82,15 +82,17 @@ class ChatRoom private constructor(
     fun isParticipant(memberId: Long): Boolean = buyer.id == memberId || seller.id == memberId
 
     /** 주어진 참여자의 마지막 읽은 메시지 id(구매자/판매자 좌석 분기). 아직 안 읽었으면 null. */
-    fun lastReadMessageIdOf(memberId: Long): Long? =
-        if (buyer.id == memberId) buyerLastReadMessageId else sellerLastReadMessageId
+    fun lastReadMessageIdOf(memberId: Long): Long? = if (buyer.id == memberId) buyerLastReadMessageId else sellerLastReadMessageId
 
     /**
      * 참여자의 읽음 지점을 주어진 메시지 id까지 전진시킨다(해당 좌석 컬럼만 갱신).
      * 읽음 지점은 단조 전진만 하므로 이미 더 뒤를 읽은 상태면 무시한다(순서 뒤바뀐/중복 요청에 안전).
      * 참여자 인가는 서비스에서 선행하므로 비참여자 호출은 도달하지 않는다.
      */
-    fun markRead(memberId: Long, messageId: Long) {
+    fun markRead(
+        memberId: Long,
+        messageId: Long,
+    ) {
         if (buyer.id == memberId) {
             val current = buyerLastReadMessageId
             if (current == null || messageId > current) {

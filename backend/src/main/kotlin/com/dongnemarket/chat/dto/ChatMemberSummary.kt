@@ -12,7 +12,6 @@ data class ChatMemberSummary private constructor(
 ) {
     companion object {
         @JvmStatic
-        fun of(member: Member): ChatMemberSummary =
-            ChatMemberSummary(member.id, member.displayNickname, member.isWithdrawn)
+        fun of(member: Member): ChatMemberSummary = ChatMemberSummary(member.id, member.displayNickname, member.isWithdrawn)
     }
 }

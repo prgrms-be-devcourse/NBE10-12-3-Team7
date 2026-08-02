@@ -1,6 +1,6 @@
 # infra — 배포 자원
 
-컨테이너 배포 자원. **dev(매일 개발)** 는 리포 루트 [`docker-compose.yml`](../docker-compose.yml)(MySQL만)이 담당하고, **전체 스택 배포**는 배포 지형별로 이 폴더에 나뉜다.
+컨테이너 배포 자원. **dev(매일 개발)** 는 리포 루트 [`docker-compose.yml`](../docker-compose.yml)(MySQL만)이 담당하고, **온프레미스 전체 스택**은 `onprem/`, **AWS 관리형 미러(IaC · 코드 전용)** 는 `cloud-terraform/` 이 담당한다.
 
 > 이 문서는 `infra/`를 이해하는 진입점이다. 리포 전체는 [../README.md](../README.md).
 
@@ -8,30 +8,25 @@
 
 | 폴더 | 대상 |
 |---|---|
-| `onprem/` | **온프레미스 전체 스택** — nginx · Next · Spring Boot · MySQL 한 호스트, 이미지는 Zot에서 pull |
-| `cloud/app/` | 앱 EC2 — nginx · Next.js · Spring Boot (ECR pull, DB 연결) |
-| `cloud/db/` | DB EC2 — MySQL 8 컨테이너 (관리형 RDS 대신 EC2 직접 호스팅) |
-| `cloud/monitoring/` | 모니터링 EC2 — Prometheus · Loki · Grafana |
+| `onprem/` | **온프레미스 전체 스택(실운영)** — nginx · Next · Spring Boot · MySQL · Redis · Ollama 한 호스트, 이미지는 Zot에서 pull |
+| `cloud-terraform/` | **AWS 관리형 미러 (OpenTofu · 코드 전용)** — ALB · ECS Fargate · RDS · ElastiCache · S3 · ECR · CloudWatch · Route53. `apply`·운영하지 않는다 |
 
-`onprem`과 `cloud`는 **같은 앱 이미지·같은 nginx 라우팅**을 쓴다. 차이는 프로파일이 아니라 env와 이미지 출처뿐이다.
+`onprem/`이 실제로 배포·운영하는 스택이고, `cloud-terraform/`은 같은 아키텍처를 AWS 관리형 서비스로 **대응(mirror)**시킨 IaC다(포트폴리오 목적). 대응 관계·구성은 [cloud-terraform/README.md](cloud-terraform/README.md) 참고.
 
-| | onprem | cloud |
-|---|---|---|
-| 이미지 | Zot(사설 레지스트리)로 push → 스택이 pull | ECR로 push → EC2가 pull (자동화는 재설계 중, 아래 CI/CD 참고) |
-| 파일 저장 | `s3` + RustFS(`FILE_STORAGE_S3_ENDPOINT` 지정) | `s3` + AWS S3(endpoint 미지정) |
+Dockerfile은 각 앱 폴더(`backend/`, `frontend/`)에 있다.
 
 `S3Config`는 `file.storage.s3.endpoint` **유무 하나로** 두 지형을 가른다 — 값이 있으면 정적 자격증명 +
 path-style(RustFS/MinIO 계열), 없으면 기존 AWS 기본 자격증명 체인. 프로파일은 양쪽 모두 `prod` 하나다.
 
-Dockerfile은 각 앱 폴더(`backend/`, `frontend/`)에 있으며 **지형 무관 공용**이다.
-
-## 기동
+## 기동 (온프레미스)
 
 ```bash
-# 각 지형 폴더(onprem/ 또는 cloud/<역할>/)에서:
+cd infra/onprem
 cp .env.example .env                    # 값 채우기. .env 는 커밋 금지
-docker compose --env-file .env up -d    # onprem: Zot pull / cloud: ECR pull
+docker compose --env-file .env up -d    # 이미지는 Zot에서 pull
 ```
+
+> AWS 미러는 코드 전용이라 기동 대신 검증만 한다 — `cd infra/cloud-terraform && tofu validate && tofu plan`.
 
 ### 온프레미스 — 프로파일
 
@@ -123,7 +118,7 @@ runner는 쓰지 않는다 — 이 리포는 public이라 포크 PR이 배포 �
 ## 주의
 
 - `.env`는 커밋하지 않는다(gitignore). `.env.example`이 필요한 키 목록이다.
-- 관측 스택은 **클라우드 전용**이다. 로컬 관측은 온프레미스의 `observability` 프로파일로 띄운다.
+- 온프레미스 관측은 `observability` 프로파일(Prometheus·Loki·Grafana)로 띄운다. AWS 미러의 관측은 CloudWatch(관리형).
 - 배포 구성이 바뀌면 이 문서를 **같은 PR에서** 갱신한다.
 
 ---

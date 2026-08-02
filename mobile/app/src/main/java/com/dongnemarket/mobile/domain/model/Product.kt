@@ -13,7 +13,8 @@ import java.math.BigDecimal
  *
  * @property sellerId 판매자 회원 PK(서버 키 이름은 `memberId`). 요약에는 판매자 닉네임이 없다.
  * @property price BigDecimal 이다. 서버가 `800000.00` 처럼 소수부를 붙여 주므로 Int/Long 으로 받으면 깨진다.
- * @property region `"서울 강남구"` 같은 지역 '이름' 문자열. 지역 ID 가 아니다.
+ * @property region 지역 참조([RegionRef]). 카드에는 `region.display`(짧은 이름)를 쓰고,
+ *   필터로 서버에 보낼 때는 `region.code` 를 쓴다. 2026-07 개편 전에는 이름 문자열 하나였다.
  * @property thumbnailUrl 이미 절대 URL 로 변환된 값. 이미지가 없는 상품은 null 이므로 화면에서 플레이스홀더를 그린다.
  * @property hidden 숨김 여부. 목록/검색 응답에서는 서버가 숨김 상품을 걸러 주므로 항상 false 다.
  */
@@ -24,7 +25,7 @@ data class Product(
     val title: String,
     val price: BigDecimal,
     val tradeStatus: TradeStatus,
-    val region: String,
+    val region: RegionRef,
     val viewCount: Long,
     val favoriteCount: Int,
     val thumbnailUrl: String?,

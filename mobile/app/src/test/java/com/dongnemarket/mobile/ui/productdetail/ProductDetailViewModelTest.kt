@@ -9,6 +9,7 @@ import com.dongnemarket.mobile.domain.model.MemberRole
 import com.dongnemarket.mobile.domain.model.MemberStatus
 import com.dongnemarket.mobile.domain.model.ProductDetail
 import com.dongnemarket.mobile.domain.model.TradeStatus
+import com.dongnemarket.mobile.domain.model.RegionRef
 import com.dongnemarket.mobile.domain.repository.CategoryRepository
 import com.dongnemarket.mobile.domain.repository.ChatRepository
 import com.dongnemarket.mobile.domain.repository.FavoriteRepository
@@ -84,7 +85,7 @@ class ProductDetailViewModelTest {
         description = "3개월 탔고 흠집 없습니다.",
         price = BigDecimal("120000.00"),
         tradeStatus = TradeStatus.ON_SALE,
-        region = "서울 강남구",
+        region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"),
         viewCount = 31,
         favoriteCount = 12,
         thumbnailUrl = "http://10.0.2.2:8080/images/bike-1.jpg",

@@ -23,19 +23,32 @@ data class CategoryResponse(
 
 /**
  * `GET /api/regions` 응답 `data` 배열의 원소.
- * 원본: backend `com.dongnemarket.region.dto.RegionResponse`
+ * 원본: backend `region/dto/RegionResponse.kt`
  *
  * ```json
- * { "regionId": 1, "name": "서울 강남구" }
+ * { "regionId": 1, "code": "11680", "level": 2, "parentCode": "11",
+ *   "fullName": "서울특별시 강남구", "displayName": "강남구" }
  * ```
  *
- * ⚠ 카테고리(`id`)와 달리 지역은 **`regionId`** 다.
+ * ### ⚠️ 2026-07 전면 교체된 DTO다
+ * 이전에는 `{ regionId, name }` 두 개뿐이었고 **이름 문자열로 통신**했다.
+ * 지금은 **[code] 로 통신**하고, [level]·[parentCode] 로 **계층 탐색**까지 된다.
+ * 옛 `name` 키는 서버에 존재하지 않으므로 그대로 두면 파싱이 실패한다.
  *
- * `name` 은 `"시도 시군구"` 가 공백 하나로 붙은 **한 문자열**이다. 계층 테이블도, 좌표도 없다.
- * 그리고 상품 필터·내 동네 설정은 `regionId` 가 아니라 이 **`name` 원문**으로 통신한다(계약 §7-18).
+ * ⚠ 카테고리는 PK 키가 `id`, 지역은 `regionId` — 비대칭은 그대로다.
+ *
+ * @property code 상품 필터·내 동네 설정에 넣는 값
+ * @property level 계층 깊이(시도 → 시군구 …)
+ * @property parentCode 상위 지역 코드. 최상위는 null
+ * @property fullName `"서울특별시 강남구"`
+ * @property displayName `"강남구"` — 목록에 보여 줄 짧은 이름
  */
 @Serializable
 data class RegionResponse(
-    val regionId: Long,
-    val name: String,
+    val regionId: Long? = null,
+    val code: String = "",
+    val level: Int = 0,
+    val parentCode: String? = null,
+    val fullName: String = "",
+    val displayName: String = "",
 )

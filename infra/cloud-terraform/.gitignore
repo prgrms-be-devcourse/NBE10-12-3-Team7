@@ -1,0 +1,26 @@
+# OpenTofu / Terraform
+
+# 프로바이더 바이너리 캐시(수백 MB). init이 재생성 → 커밋 X
+.terraform/
+
+# 상태 파일: 실제 자원 ID·민감정보 포함 → 커밋 절대 금지
+*.tfstate
+*.tfstate.*
+
+crash.log
+crash.*.log
+
+# 실제 값(민감). .example만 커밋한다
+*.tfvars
+!*.tfvars.example
+
+# 로컬 오버라이드
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+.terraformrc
+terraform.rc
+
+# .terraform.lock.hcl 은 일부러 무시하지 않는다 — 프로바이더 버전 잠금이라 커밋해야 팀이 같은 버전을 쓴다.

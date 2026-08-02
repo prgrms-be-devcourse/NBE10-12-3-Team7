@@ -1,5 +1,6 @@
 package com.dongnemarket.manner.service
 
+import com.dongnemarket.category.entity.Category
 import com.dongnemarket.chat.entity.ChatRoom
 import com.dongnemarket.chat.repository.ChatRoomRepository
 import com.dongnemarket.global.exception.BusinessException
@@ -62,7 +63,9 @@ class MannerRatingServiceTest {
         seller: Member,
         tradeStatus: TradeStatus,
     ): Product {
-        val product = Product.create(seller, null, "상품", "설명", BigDecimal.valueOf(10000), yeoksam())
+        // [변경 · product Kotlin 전환] category 인자가 null 이었으나 Product.create 가 non-null 이 되어
+        // 최소 인스턴스로 교체한다. 이 테스트는 카테고리 내용을 쓰지 않는다.
+        val product = Product.create(seller, Category("매너평가테스트카테고리"), "상품", "설명", BigDecimal.valueOf(10000), yeoksam())
         ReflectionTestUtils.setField(product, "id", id)
         product.changeTradeStatus(tradeStatus)
         return product

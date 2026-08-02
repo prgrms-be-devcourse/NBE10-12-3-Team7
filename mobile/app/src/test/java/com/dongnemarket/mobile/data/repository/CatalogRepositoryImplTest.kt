@@ -164,7 +164,7 @@ class CatalogRepositoryImplTest {
     fun `서버 키 regionId 가 도메인 Region 의 regionId 로 매핑된다`() = runTest {
         // Given — 지역 PK 키는 카테고리와 달리 regionId 다
         coEvery { regionApi.getRegions() } returns
-            envelope(listOf(RegionResponse(regionId = 11L, name = "서울 강남구")))
+            envelope(listOf(RegionResponse(regionId = 11L, code = "11680", level = 2, parentCode = "11", fullName = "서울특별시 강남구", displayName = "강남구")))
         val repository = RegionRepositoryImpl(regionApi)
 
         // When
@@ -179,14 +179,14 @@ class CatalogRepositoryImplTest {
         // Given — 이 문자열이 그대로 상품 필터·내 동네 설정 요청에 실려 서버에서 완전 비교된다(계약 §7-18).
         //         여기서 trim 하거나 공백을 정규화하면 원인 불명 400 이 난다.
         coEvery { regionApi.getRegions() } returns
-            envelope(listOf(RegionResponse(regionId = 11L, name = " 서울  강남구 ")))
+            envelope(listOf(RegionResponse(regionId = 11L, code = "00000", level = 2, parentCode = "11", fullName = " 서울  강남구 ", displayName = " 서울  강남구 ")))
         val repository = RegionRepositoryImpl(regionApi)
 
         // When
         val regions = repository.getRegions().getOrThrow()
 
         // Then
-        assertEquals(" 서울  강남구 ", regions.single().name)
+        assertEquals(" 서울  강남구 ", regions.single().displayName)
     }
 
     @Test
@@ -194,9 +194,9 @@ class CatalogRepositoryImplTest {
         // Given
         coEvery { regionApi.getRegions() } returns envelope(
             listOf(
-                RegionResponse(regionId = 11L, name = "서울 강남구"),
-                RegionResponse(regionId = 12L, name = "서울 강동구"),
-                RegionResponse(regionId = 13L, name = "서울 강북구"),
+                RegionResponse(regionId = 11L, code = "11680", level = 2, parentCode = "11", fullName = "서울특별시 강남구", displayName = "강남구"),
+                RegionResponse(regionId = 12L, code = "11740", level = 2, parentCode = "11", fullName = "서울특별시 강동구", displayName = "강동구"),
+                RegionResponse(regionId = 13L, code = "00000", level = 2, parentCode = "11", fullName = "서울 강북구", displayName = "서울 강북구"),
             ),
         )
         val repository = RegionRepositoryImpl(regionApi)
@@ -212,14 +212,14 @@ class CatalogRepositoryImplTest {
     fun `공백이 없는 세종은 시도 이름이 자기 자신이 된다`() = runTest {
         // Given — 229건 중 "세종" 만 공백이 없다. split(" ")[1] 로 접근하면 여기서 터진다.
         coEvery { regionApi.getRegions() } returns
-            envelope(listOf(RegionResponse(regionId = 200L, name = "세종")))
+            envelope(listOf(RegionResponse(regionId = 200L, code = "00000", level = 2, parentCode = "11", fullName = "세종", displayName = "세종")))
         val repository = RegionRepositoryImpl(regionApi)
 
         // When
         val region = repository.getRegions().getOrThrow().single()
 
         // Then — 동네 선택 화면의 섹션 헤더가 "세종" 으로 잡힌다
-        assertEquals("세종", region.sido)
+        assertEquals("세종", region.displayName)
     }
 
     // ────────────────────────── 지역 세션 캐시 ──────────────────────────
@@ -230,7 +230,7 @@ class CatalogRepositoryImplTest {
         var callCount = 0
         coEvery { regionApi.getRegions() } answers {
             callCount++
-            envelope(listOf(RegionResponse(regionId = 11L, name = "서울 강남구")))
+            envelope(listOf(RegionResponse(regionId = 11L, code = "11680", level = 2, parentCode = "11", fullName = "서울특별시 강남구", displayName = "강남구")))
         }
         val repository = RegionRepositoryImpl(regionApi)
 
@@ -249,7 +249,7 @@ class CatalogRepositoryImplTest {
         coEvery { regionApi.getRegions() } coAnswers {
             callCount++
             delay(100)
-            envelope(listOf(RegionResponse(regionId = 11L, name = "서울 강남구")))
+            envelope(listOf(RegionResponse(regionId = 11L, code = "11680", level = 2, parentCode = "11", fullName = "서울특별시 강남구", displayName = "강남구")))
         }
         val repository = RegionRepositoryImpl(regionApi)
 
@@ -282,7 +282,7 @@ class CatalogRepositoryImplTest {
         coEvery { regionApi.getRegions() } answers {
             callCount++
             if (callCount == 1) throw IOException("네트워크 끊김")
-            envelope(listOf(RegionResponse(regionId = 11L, name = "서울 강남구")))
+            envelope(listOf(RegionResponse(regionId = 11L, code = "11680", level = 2, parentCode = "11", fullName = "서울특별시 강남구", displayName = "강남구")))
         }
         val repository = RegionRepositoryImpl(regionApi)
 

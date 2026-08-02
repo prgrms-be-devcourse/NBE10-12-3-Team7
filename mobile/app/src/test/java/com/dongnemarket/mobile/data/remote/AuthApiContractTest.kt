@@ -152,17 +152,17 @@ class AuthApiContractTest {
     }
 
     @Test
-    fun `내 동네 저장은 PUT 으로 regions 배열을 보낸다`() = runTest {
+    fun `내 동네 저장은 PUT 으로 regionCodes 배열을 보낸다`() = runTest {
         // Given
         server.enqueue(jsonResponse(200, LOCATIONS_SUCCESS_BODY))
 
         // When
-        memberRepository.updateMyLocations(listOf("서울 강남구", "서울 마포구"))
+        memberRepository.updateMyLocations(listOf("11680", "11440"))
 
-        // Then: 계약 §2-7 — PUT /api/members/me/locations, body 는 {"regions":[...]}
+        // Then: 계약 §2-7 — PUT /api/members/me/locations, body 는 {"regionCodes":[...]}
         val recorded = server.takeRequest()
         assertEquals(
-            "PUT /api/members/me/locations {\"regions\":[\"서울 강남구\",\"서울 마포구\"]}",
+            "PUT /api/members/me/locations {\"regionCodes\":[\"11680\",\"11440\"]}",
             "${recorded.method} ${recorded.path} ${recorded.body.readUtf8()}",
         )
     }
@@ -260,7 +260,7 @@ class AuthApiContractTest {
         val result = memberRepository.getActiveRegionName()
 
         // Then: 홈 헤더에 찍을 대표 동네
-        assertEquals("서울 강남구", result.getOrNull())
+        assertEquals("강남구", result.getOrNull())
     }
 
     @Test
@@ -511,8 +511,8 @@ class AuthApiContractTest {
 
         const val LOCATIONS_SUCCESS_BODY = """
             {"status":200,"message":"요청이 성공적으로 처리되었습니다.",
-             "data":[{"region":"서울 강남구","sortOrder":0,"active":true},
-                     {"region":"서울 마포구","sortOrder":1,"active":false}]}
+             "data":[{"regionCode":"11680","regionName":"강남구","regionFullName":"서울특별시 강남구","sortOrder":0,"active":true},
+                     {"regionCode":"11440","regionName":"마포구","regionFullName":"서울특별시 마포구","sortOrder":1,"active":false}]}
         """
 
         const val LOCATIONS_EMPTY_BODY = """

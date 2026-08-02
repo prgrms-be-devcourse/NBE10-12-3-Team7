@@ -45,9 +45,14 @@ const val TAG_DETAIL_CHAT_BUTTON = "detail_chat_button"
  * 이 Composable 은 **상태를 갖지 않는다**(눌렸다는 사실만 위로 알린다) → Preview·테스트에서 단독으로 돌아간다.
  *
  * @param isFavorite 하트를 채울지. 값은 앱 전역 찜 캐시에서 조합된 것이다(상세 응답에는 없다 — 계약 §7-2).
- * @param isMyProduct 내 상품이면 채팅 버튼을 **비활성**으로 둔다.
- *   판매자가 자기 상품에 방을 만들면 서버가 400 `CANNOT_CHAT_WITH_SELF` 를 주므로(계약 §3-6),
+ * @param isMyProduct 내 상품이면 **찜 하트와 채팅 버튼을 둘 다 비활성**으로 둔다.
+ *   서버가 각각 400 `CANNOT_FAVORITE_OWN_PRODUCT` / `CANNOT_CHAT_WITH_SELF` 를 주므로,
  *   실패를 유발하고 안내하는 대신 애초에 누를 수 없게 하는 편이 낫다.
+ *
+ *   > 하트 비활성화는 2026-08-02 에뮬 검수에서 발견해 추가했다. 그전에는 하트만 눌렸고,
+ *   > 누르면 낙관적 갱신이 켜졌다가 서버 400 으로 롤백됐다 — 동작은 안전했지만
+ *   > "누를 수 있는데 실패하는" UX였다. 단위·계기 테스트 어느 쪽도 이 조합을 묻지 않아
+ *   > 실기 검수 전까지 드러나지 않았다.
  * @param isChatCreating 방 생성 요청 중. 버튼을 잠그고 스피너를 돌려 중복 탭을 막는다.
  */
 @Composable
@@ -78,16 +83,22 @@ fun ProductDetailBottomBar(
             ) {
                 IconButton(
                     onClick = onFavoriteClick,
+                    // 내 상품은 서버가 찜을 거부한다(400 CANNOT_FAVORITE_OWN_PRODUCT) → 채팅 버튼과 같은 기준으로 잠근다.
+                    enabled = !isMyProduct,
                     modifier = Modifier.testTag(TAG_DETAIL_FAVORITE),
                 ) {
                     Icon(
                         imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                        // 스크린리더가 "찜하기 버튼" / "찜 취소 버튼" 으로 읽도록 상태에 따라 바꾼다.
-                        contentDescription = if (isFavorite) "찜 취소" else "찜하기",
-                        tint = if (isFavorite) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                        // 스크린리더가 상태를 읽도록 문구를 바꾼다. 내 상품이면 "왜 못 누르는지"까지 알려 준다.
+                        contentDescription = when {
+                            isMyProduct -> "내가 등록한 상품은 찜할 수 없어요"
+                            isFavorite -> "찜 취소"
+                            else -> "찜하기"
+                        },
+                        tint = when {
+                            isMyProduct -> MaterialTheme.colorScheme.outline
+                            isFavorite -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
                         },
                     )
                 }
