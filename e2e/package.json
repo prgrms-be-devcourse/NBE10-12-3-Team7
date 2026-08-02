@@ -1,0 +1,27 @@
+{
+  "name": "marketon-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MarketON e2e 테스트 (Playwright API 모드 주축)",
+  "scripts": {
+    "e2e:up": "docker compose -f docker-compose.e2e.yml up -d --wait && node scripts/wait-for-env.mjs",
+    "e2e:up:ui": "docker compose -f docker-compose.e2e.yml --profile ui up -d --wait && node scripts/wait-for-env.mjs --ui",
+    "e2e:down": "docker compose -f docker-compose.e2e.yml --profile ui down -v",
+    "e2e:reset": "npm run e2e:down && npm run e2e:up",
+    "e2e:rebuild": "docker compose -f docker-compose.e2e.yml build backend",
+    "e2e:logs": "docker compose -f docker-compose.e2e.yml logs -f --tail 100",
+    "smoke": "playwright test --project=smoke",
+    "test": "playwright test --project=smoke --project=api",
+    "test:api": "playwright test --project=api",
+    "test:ui": "playwright test --project=ui",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.0",
+    "ioredis": "^5.4.1",
+    "typescript": "^5.7.0"
+  }
+}
