@@ -25,7 +25,8 @@ data class ProductDetail(
     val description: String,
     val price: BigDecimal,
     val tradeStatus: TradeStatus,
-    val region: String,
+    /** 지역 참조. 상세는 여유가 있으므로 `region.fullName`(전체 이름)을 써도 좋다. */
+    val region: RegionRef,
     val viewCount: Long,
     val favoriteCount: Int,
     val thumbnailUrl: String?,

@@ -131,7 +131,7 @@ class HomeViewModel @Inject constructor(
 
         listJob = viewModelScope.launch {
             productRepository.getProducts(
-                regions = current.filterRegions,
+                regionCodes = current.filterRegions,
                 cursor = cursor,
                 size = PAGE_SIZE,
             )
@@ -191,9 +191,9 @@ class HomeViewModel @Inject constructor(
 
             // 2) 카테고리·상품 (병렬)
             val categoriesDeferred = async { categoryRepository.getCategories() }
-            val filterRegions = locations.toFilterRegions()
+            val filterRegions = locations.toFilterRegionCodes()
             val productsDeferred = async {
-                productRepository.getProducts(regions = filterRegions, cursor = null, size = PAGE_SIZE)
+                productRepository.getProducts(regionCodes = filterRegions, cursor = null, size = PAGE_SIZE)
             }
 
             val categories = categoriesDeferred.await().getOrElse { emptyList() }
@@ -256,7 +256,7 @@ class HomeViewModel @Inject constructor(
                 productRepository.searchProducts(
                     keyword = current.keyword.takeIf { it.isNotBlank() },
                     categoryId = current.selectedCategoryId,
-                    regions = current.filterRegions,
+                    regionCodes = current.filterRegions,
                 )
                     .onSuccess { items ->
                         snapshot = snapshot.copy(
@@ -270,7 +270,7 @@ class HomeViewModel @Inject constructor(
                     .onFailure { _uiState.value = HomeUiState.Error(it.toUserMessage()) }
             } else {
                 productRepository.getProducts(
-                    regions = current.filterRegions,
+                    regionCodes = current.filterRegions,
                     cursor = null,
                     size = PAGE_SIZE,
                 )
@@ -333,7 +333,7 @@ class HomeViewModel @Inject constructor(
  * 플래그만 어긋난 응답에서 동네가 있는 사용자의 헤더가 비는 것을 막는다).
  */
 private fun List<MemberLocation>.activeRegionName(): String? =
-    firstOrNull { it.active }?.region ?: minByOrNull { it.sortOrder }?.region
+    (firstOrNull { it.active } ?: minByOrNull { it.sortOrder })?.region?.display
 
 /**
  * 내 동네 → 상품 필터용 지역 '이름' 목록.
@@ -341,9 +341,10 @@ private fun List<MemberLocation>.activeRegionName(): String? =
  * 두 가지가 서버 제약이다: 넘기는 값은 regionId 가 아니라 **이름 원문**(`"서울 강남구"`)이고,
  * **최대 2개**다(3개 이상이면 400). 동네가 없으면 null 을 돌려 파라미터 자체를 생략시킨다(= 전국).
  */
-private fun List<MemberLocation>.toFilterRegions(): List<String>? =
+private fun List<MemberLocation>.toFilterRegionCodes(): List<String>? =
     sortedBy { it.sortOrder }
-        .map { it.region }
+        .map { it.region.code }
+        .filter { it.isNotBlank() }
         .take(2)
         .takeIf { it.isNotEmpty() }
 

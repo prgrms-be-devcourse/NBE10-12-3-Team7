@@ -24,13 +24,18 @@ interface ProductApiService {
     /**
      * 홈 목록 — 커서 페이징.
      *
-     * `regions` 를 `List<String>` 으로 선언하면 Retrofit 이 **반복 파라미터**로 직렬화한다:
-     * `?regions=서울 강남구&regions=서울 마포구` (콤마 join 이 아니다 — 서버가 기대하는 형태가 이것이다).
+     * `regionCodes` 를 `List<String>` 으로 선언하면 Retrofit 이 **반복 파라미터**로 직렬화한다:
+     * `?regionCodes=11680&regionCodes=11440` (콤마 join 이 아니다 — 서버가 기대하는 형태가 이것이다).
      * null 이면 파라미터 자체가 빠진다.
+     *
+     * ### ⚠️ 파라미터 이름이 `regions` → `regionCodes` 로 바뀌었다 (2026-07)
+     * 값도 **이름 문자열이 아니라 지역 코드**다. 옛 이름으로 보내면 서버가 그 파라미터를 읽지 않아
+     * **에러 없이 필터가 통째로 무시**된다(항상 전국 조회). 예외도 로그도 남지 않는 유형이라
+     * "동네 설정했는데 왜 다른 지역 상품이 뜨지?"로만 드러난다.
      */
     @GET("api/products")
     suspend fun getProducts(
-        @Query("regions") regions: List<String>? = null,
+        @Query("regionCodes") regionCodes: List<String>? = null,
         @Query("cursor") cursor: Long? = null,
         @Query("size") size: Int = 30,
     ): ApiEnvelope<ProductPageResponse>
@@ -46,7 +51,8 @@ interface ProductApiService {
     suspend fun searchProducts(
         @Query("keyword") keyword: String? = null,
         @Query("categoryId") categoryId: Long? = null,
-        @Query("regions") regions: List<String>? = null,
+        /** 지역 **코드**. 목록과 같은 이유로 `regions` 가 아니라 `regionCodes` 다. */
+        @Query("regionCodes") regionCodes: List<String>? = null,
     ): ApiEnvelope<List<ProductSummaryResponse>>
 
     /**

@@ -81,14 +81,14 @@ class ProductApiContractTest {
         server.enqueue(성공응답(빈_상품_페이지_JSON))
 
         // When: 내 동네 2개로 목록을 조회하면
-        repository.getProducts(regions = listOf("서울 강남구", "서울 마포구"))
+        repository.getProducts(regionCodes = listOf("서울 강남구", "서울 마포구"))
 
         // Then: ?regions=서울 강남구&regions=서울 마포구 로 두 번 실린다
         //       (콤마 join 이나 배열 JSON 으로 보내면 서버가 읽지 못한다)
         val 요청 = server.takeRequest()
         assertEquals(
             listOf("서울 강남구", "서울 마포구"),
-            요청.requestUrl!!.queryParameterValues("regions"),
+            요청.requestUrl!!.queryParameterValues("regionCodes"),
         )
     }
 
@@ -124,12 +124,12 @@ class ProductApiContractTest {
         server.enqueue(성공응답(빈_상품_페이지_JSON))
 
         // When
-        repository.getProducts(regions = listOf("서울 강남구", "서울 마포구", "서울 송파구"))
+        repository.getProducts(regionCodes = listOf("서울 강남구", "서울 마포구", "서울 송파구"))
 
         // Then: 400 을 맞기 전에 클라이언트가 잘라 낸다
         assertEquals(
             listOf("서울 강남구", "서울 마포구"),
-            server.takeRequest().requestUrl!!.queryParameterValues("regions"),
+            server.takeRequest().requestUrl!!.queryParameterValues("regionCodes"),
         )
     }
 
@@ -139,12 +139,12 @@ class ProductApiContractTest {
         server.enqueue(성공응답(빈_상품_페이지_JSON))
 
         // When
-        repository.getProducts(regions = listOf(" 서울 강남구 ", "서울 강남구", "   "))
+        repository.getProducts(regionCodes = listOf(" 서울 강남구 ", "서울 강남구", "   "))
 
         // Then: 트림 → 공백 제거 → 중복 제거
         assertEquals(
             listOf("서울 강남구"),
-            server.takeRequest().requestUrl!!.queryParameterValues("regions"),
+            server.takeRequest().requestUrl!!.queryParameterValues("regionCodes"),
         )
     }
 

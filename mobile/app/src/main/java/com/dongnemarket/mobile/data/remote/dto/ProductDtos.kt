@@ -45,8 +45,18 @@ data class ProductSummaryResponse(
      * 서버가 새 상태를 추가해도 파싱이 깨지지 않게 하고, 변환은 `TradeStatus.from()` 에 맡긴다.
      */
     val tradeStatus: String? = null,
-    /** `"서울 강남구"` 같은 지역 이름 문자열. */
-    val region: String? = null,
+    /**
+     * 지역 코드(`"11680"`). **서버 필터(`?regionCodes=`)에 넣는 값이 이것이다.**
+     *
+     * ⚠️ 2026-07 백엔드 지역 모델 개편으로 `region: String` 하나가 이 셋으로 쪼개졌다.
+     * 셋 다 nullable + 기본값을 준 이유: 서버가 non-null 로 주지만, 키가 빠져도
+     * 목록 전체가 파싱 실패로 죽지 않게 하기 위한 방어다(빈 문자열로 떨어진다).
+     */
+    val regionCode: String? = null,
+    /** 짧은 표시 이름(`"강남구"`). 카드에 쓴다. */
+    val regionName: String? = null,
+    /** 전체 표시 이름(`"서울특별시 강남구"`). */
+    val regionFullName: String? = null,
     val viewCount: Long = 0,
     val favoriteCount: Int = 0,
     /** 상대 경로(`/api/products/images/...`)이거나 null. 절대 URL 변환은 매퍼가 한다. */
@@ -72,7 +82,10 @@ data class ProductResponse(
     @Serializable(with = BigDecimalSerializer::class)
     val price: BigDecimal,
     val tradeStatus: String? = null,
-    val region: String? = null,
+    /** 지역 3분할 — 자세한 사유는 [ProductSummaryResponse.regionCode] 참고. */
+    val regionCode: String? = null,
+    val regionName: String? = null,
+    val regionFullName: String? = null,
     /** 이 조회로 +1 된 값이 그대로 담겨 온다. */
     val viewCount: Long = 0,
     val favoriteCount: Int = 0,

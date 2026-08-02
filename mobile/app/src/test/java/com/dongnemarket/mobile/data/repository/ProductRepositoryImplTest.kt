@@ -116,7 +116,7 @@ class ProductRepositoryImplTest {
         }
 
         // When
-        repository.getProducts(regions = listOf("서울 강남구", "서울 마포구", "서울 성동구"))
+        repository.getProducts(regionCodes = listOf("서울 강남구", "서울 마포구", "서울 성동구"))
 
         // Then
         assertEquals(listOf("서울 강남구", "서울 마포구"), sentRegions)
@@ -132,7 +132,7 @@ class ProductRepositoryImplTest {
         }
 
         // When
-        repository.getProducts(regions = listOf("서울 강남구", "서울 강남구", "서울 마포구"))
+        repository.getProducts(regionCodes = listOf("서울 강남구", "서울 강남구", "서울 마포구"))
 
         // Then
         assertEquals(listOf("서울 강남구", "서울 마포구"), sentRegions)
@@ -148,7 +148,7 @@ class ProductRepositoryImplTest {
         }
 
         // When
-        repository.getProducts(regions = emptyList())
+        repository.getProducts(regionCodes = emptyList())
 
         // Then — null 이면 Retrofit 이 파라미터 자체를 뺀다 = 전국 조회
         assertNull(sentRegions)
@@ -164,7 +164,7 @@ class ProductRepositoryImplTest {
         }
 
         // When
-        repository.getProducts(regions = listOf("", "   "))
+        repository.getProducts(regionCodes = listOf("", "   "))
 
         // Then
         assertNull(sentRegions)
@@ -180,7 +180,7 @@ class ProductRepositoryImplTest {
         }
 
         // When
-        repository.getProducts(regions = null)
+        repository.getProducts(regionCodes = null)
 
         // Then
         assertNull(sentRegions)
@@ -281,7 +281,7 @@ class ProductRepositoryImplTest {
         // When
         repository.searchProducts(
             categoryId = 1L,
-            regions = listOf("서울 강남구", "서울 마포구", "서울 성동구"),
+            regionCodes = listOf("서울 강남구", "서울 마포구", "서울 성동구"),
         )
 
         // Then
@@ -466,7 +466,9 @@ class ProductRepositoryImplTest {
         title: String = "아이폰 15 프로",
         price: BigDecimal = BigDecimal("800000.00"),
         tradeStatus: String? = "ON_SALE",
-        region: String? = "서울 강남구",
+        regionCode: String? = "11680",
+        regionName: String? = "강남구",
+        regionFullName: String? = "서울특별시 강남구",
         viewCount: Long = 12L,
         favoriteCount: Int = 3,
         thumbnailUrl: String? = null,
@@ -478,7 +480,9 @@ class ProductRepositoryImplTest {
         title = title,
         price = price,
         tradeStatus = tradeStatus,
-        region = region,
+        regionCode = regionCode,
+        regionName = regionName,
+        regionFullName = regionFullName,
         viewCount = viewCount,
         favoriteCount = favoriteCount,
         thumbnailUrl = thumbnailUrl,
@@ -495,7 +499,9 @@ class ProductRepositoryImplTest {
         description: String? = "생활기스 있습니다.",
         price: BigDecimal = BigDecimal("800000.00"),
         tradeStatus: String? = "ON_SALE",
-        region: String? = "서울 강남구",
+        regionCode: String? = "11680",
+        regionName: String? = "강남구",
+        regionFullName: String? = "서울특별시 강남구",
         viewCount: Long = 13L,
         favoriteCount: Int = 3,
         thumbnailUrl: String? = null,
@@ -510,7 +516,9 @@ class ProductRepositoryImplTest {
         description = description,
         price = price,
         tradeStatus = tradeStatus,
-        region = region,
+        regionCode = regionCode,
+        regionName = regionName,
+        regionFullName = regionFullName,
         viewCount = viewCount,
         favoriteCount = favoriteCount,
         thumbnailUrl = thumbnailUrl,

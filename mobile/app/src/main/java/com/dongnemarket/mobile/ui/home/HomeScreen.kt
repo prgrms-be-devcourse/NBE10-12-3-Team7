@@ -26,6 +26,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dongnemarket.mobile.domain.model.Category
 import com.dongnemarket.mobile.domain.model.Product
+import com.dongnemarket.mobile.domain.model.RegionRef
 import com.dongnemarket.mobile.domain.model.TradeStatus
 import com.dongnemarket.mobile.ui.component.EmptyView
 import com.dongnemarket.mobile.ui.component.ErrorView
@@ -338,7 +339,7 @@ private fun previewSuccess() = HomeUiState.Success(
         Category(3L, "가구/인테리어"),
         Category(4L, "의류"),
     ),
-    region = "서울 강남구",
+    region = "강남구",
     selectedCategoryId = null,
     keyword = "",
     isAppending = false,
@@ -357,7 +358,7 @@ private fun previewProduct(
     title = title,
     price = price,
     tradeStatus = tradeStatus,
-    region = "서울 강남구",
+    region = RegionRef(code = "11680", name = "강남구", fullName = "서울특별시 강남구"),
     viewCount = 42L,
     favoriteCount = 3,
     thumbnailUrl = null,
