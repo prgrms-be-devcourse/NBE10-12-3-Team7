@@ -1,0 +1,30 @@
+# 부하를 거는 쪽(다른 노트북)에서 쓰는 compose. **k6 하나뿐이다.**
+# 이 노트북에는 앱 스택이 없다 — 맥에 떠 있는 스택을 LAN 으로 때린다.
+#
+# 사용 (노트북에서):
+#   cp .env.example .env      # BASE_URL 을 맥의 LAN IP 로
+#   docker compose run --rm k6 run /scripts/s00-network-floor.js
+#
+# 도커만 있으면 된다. k6 도 Node 도 설치할 필요가 없다.
+name: dongnemarket-loadtest
+
+services:
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./results:/results
+    environment:
+      # 맥의 LAN IP. 공유기가 DHCP 로 주소를 바꿀 수 있으니 실행 전에 확인할 것.
+      # 값을 따옴표로 감싼다 — 에러 문구 안의 "콜론+공백"을 YAML 이 매핑으로 읽어 파싱이 깨진다.
+      BASE_URL: "${BASE_URL:?BASE_URL 을 .env 에 설정할 것 — 예 http://192.168.219.112}"
+
+      # k6 결과를 맥의 Prometheus 로 밀어넣어 Grafana 에서 실시간으로 본다.
+      # 맥의 Prometheus 는 --web.enable-remote-write-receiver 가 켜져 있다.
+      K6_PROMETHEUS_RW_SERVER_URL: ${K6_PROMETHEUS_RW_SERVER_URL:-}
+
+      # k6 는 기본으로 p99 만 보낸다. 기존 Grafana 대시보드가 p95 를 쓰므로 함께 보낸다.
+      K6_PROMETHEUS_RW_TREND_STATS: ${K6_PROMETHEUS_RW_TREND_STATS:-p(95),p(99),avg,max}
+
+      # 실행을 구분하는 꼬리표. Grafana 에서 회차를 나눠 보려면 매번 다르게 준다.
+      K6_TAGS: ${K6_TAGS:-}

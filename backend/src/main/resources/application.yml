@@ -97,6 +97,11 @@ file:
     s3:
       bucket: ${AWS_S3_BUCKET:}
       region: ${AWS_REGION:ap-northeast-2}
+      # endpoint가 비어 있으면 AWS S3(기본 자격증명 체인), 값이 있으면 S3 호환 스토리지(온프레미스 RustFS)로
+      # 붙는다. 두 지형의 차이를 프로파일이 아니라 env로만 가르기 위한 분기점이다(S3Config 참고).
+      endpoint: ${FILE_STORAGE_S3_ENDPOINT:}
+      access-key: ${FILE_STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${FILE_STORAGE_S3_SECRET_KEY:}
 
 # 일반 API 요청 속도 제한(슬라이딩 윈도우, Redis 기반). 로그인 시도 제한(auth.LoginAttemptService, 고정 윈도우)과는
 # 별개로 모든 /api/** 요청에 적용되는 범용 남용 방지 장치다. window-seconds 동안 capacity회 초과 시 429.
@@ -155,3 +160,17 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+
+# ── 데이터 적재 스위치 ────────────────────────────────────────────────────────
+# 프로파일은 "어느 환경인가"(test·dev·prod)만 표현한다. "무엇을 추가로 적재할까"는 env로 켠다.
+# 두 축을 같은 자리(--spring.profiles.active)에 섞으면 dev 와 demo 가 비교 대상처럼 보여
+# 혼란이 생긴다 — 실제로는 demo 가 dev 위에 덧씌우는 옵션이었다.
+#
+#   데모 데이터 주입 : APP_SEED_DEMO=true
+#   스키마 초기화     : SPRING_JPA_HIBERNATE_DDL_AUTO=create   ⚠️ 데이터 전체 소실
+#
+# 마스터(카테고리·지역)와 부트스트랩(관리자)에는 스위치가 없다 — 없으면 서비스가 성립하지
+# 않는 데이터라 항상 적재된다. 계층 설명은 infra/infra.md 참고.
+app:
+  seed:
+    demo: ${APP_SEED_DEMO:false}

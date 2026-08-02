@@ -13,3 +13,18 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+
+  # 컨테이너별 자원 — 대시보드 2행
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # 호스트(Docker Desktop에서는 리눅스 VM) — 대시보드 4행
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # MySQL 내부 — 대시보드 3행
+  - job_name: 'mysql'
+    static_configs:
+      - targets: ['mysqld-exporter:9104']

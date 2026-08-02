@@ -1,0 +1,23 @@
+# 맥(스택과 같은 호스트)에서 돌릴 때만 얹는다. k6 를 온프렘 스택의 네트워크에 붙여
+# nginx 를 컨테이너 이름으로 직접 부르게 한다 — 맥의 Wi-Fi 를 타지 않는다.
+#
+# 왜 나눠 두는가: 이 회차의 목표는 **"앱 자체가 얼마나 버티나"(낙관적 상한)** 다.
+# LAN IP 로 들어오면 Wi-Fi 지연 편차가 섞여 "앱의 무릎"인지 "Wi-Fi 의 무릎"인지 구분되지 않는다.
+# 무부하 실측도 컨테이너 경유 23.9ms 대 LAN 경유 25.6ms 로 이쪽이 짧다.
+#
+# 노트북에서는 이 파일을 쓰지 않는다 — 그쪽은 LAN IP 로 들어와야 사용자 실측이 되고,
+# 두 회차의 차이가 곧 네트워크 비용이 된다.
+#
+# 실행(loadtest 폴더에서):
+#   docker compose -f docker-compose.yml -f docker-compose.onprem.yml run --rm k6 run /scripts/s00-ratelimit.js
+services:
+  k6:
+    networks:
+      - onprem
+    environment:
+      BASE_URL: http://nginx:80
+
+networks:
+  onprem:
+    name: dongnemarket-onprem_default
+    external: true

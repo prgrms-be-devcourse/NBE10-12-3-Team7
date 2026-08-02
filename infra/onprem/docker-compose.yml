@@ -1,13 +1,16 @@
 # 온프레미스(로컬 전체 컨테이너) 배포. nginx·Next·Spring Boot·MySQL·Redis를 한 호스트에 자기완결로 올린다.
-# AWS 미러(infra/cloud-terraform/, 코드 전용)와 달리 실제 배포·운영하는 스택 — 이미지 로컬 빌드, DB도 같은 스택 MySQL.
-# 앱은 prod 프로파일 + FILE_STORAGE_TYPE=local(기본). 클라우드와의 차이는 프로파일이 아니라 env·이미지 출처뿐.
+# AWS 미러(infra/cloud-terraform/, 코드 전용)와 달리 실제 배포·운영하는 스택이다.
+# 앱/프론트 이미지는 사설 레지스트리 Zot에서 pull한다(미러의 ECR 대응). DB도 같은 스택의 MySQL 컨테이너.
+# 앱은 prod 프로파일 + FILE_STORAGE_TYPE=s3(같은 스택의 RustFS). 미러와의 차이는 프로파일이 아니라
+# env(스토리지 endpoint·DB 주소)와 이미지 출처(Zot ↔ ECR)뿐이다.
 # (설계·경계: ../infra.md)
 #
 # 사용(이 폴더에서):
 #   cp .env.example .env                                       # 값 채우기(.env는 gitignore)
-#   (cd ../../backend && ./gradlew clean build -x test)        # 앱 이미지용 JAR 선행 빌드(필수)
-#   docker compose --env-file .env up -d --build               # nginx+next+app+mysql+redis
-#   docker compose --env-file .env --profile observability up -d --build   # +관측
+#   docker compose --env-file .env up -d zot                   # ① 레지스트리 먼저
+#   ./build-and-push.sh                                        # ② 이미지 빌드 → Zot push
+#   docker compose --env-file .env up -d                       # ③ 나머지(app/next는 Zot에서 pull)
+#   docker compose --env-file .env --profile observability up -d           # +관측
 #   docker compose --env-file .env --profile edge up -d        # +외부 임시 URL(Cloudflare 퀵터널)
 name: dongnemarket-onprem
 
@@ -48,6 +51,38 @@ services:
       timeout: 5s
       retries: 10
 
+  # 사설 이미지 레지스트리 Zot — 클라우드의 ECR 대응. app/next 이미지를 여기 push하고 스택은 여기서 pull한다.
+  # compose의 image pull은 depends_on을 기다리지 않으므로, 최초 기동은 zot → build-and-push.sh → 나머지 순서로.
+  zot:
+    image: ghcr.io/project-zot/zot:latest
+    container_name: dongne-zot
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./zot/config.json:/etc/zot/config.json:ro
+      - dongne-zot-data:/var/lib/registry
+    # healthcheck 없음: zot 이미지는 zot 바이너리 하나만 담은 distroless라 셸·wget·curl이 없다.
+    # 컨테이너 안에서 실행할 수단이 없으므로 어떤 test도 통과하지 못한다(exec: "/bin/sh": no such file).
+    # 가용성은 build-and-push.sh의 `curl /v2/` 사전 확인과 app/next의 pull 성공으로 검증한다.
+
+  # S3 호환 오브젝트 스토리지 RustFS — 클라우드의 S3 대응. app이 이미지 파일을 여기에 저장한다.
+  # 자격증명 env 이름은 이미지의 entrypoint.sh에서 확인함(RUSTFS_ACCESS_KEY/SECRET_KEY, 기본 rustfsadmin).
+  # 빈 문자열을 주면 기동이 하드 실패하므로 .env에 반드시 값이 있어야 한다.
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: dongne-rustfs
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # 콘솔
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+    volumes:
+      - dongne-rustfs-data:/data     # named volume — 비루트(UID 10001) 권한 이슈 회피
+      - dongne-rustfs-logs:/logs
+
   # 관리자 AI 어시스턴트용 Ollama — 온프레미스 스택 내 컨테이너(사내 서버 대체, qwen3:1.7b 통일).
   ollama:
     image: ollama/ollama:latest
@@ -75,10 +110,8 @@ services:
     restart: "no"
 
   app:
-    build:
-      context: ../../backend          # ← 리포 루트 기준(이 폴더에서 두 단계 위)
-      dockerfile: Dockerfile
-    image: dongnemarket-app:latest
+    # 로컬 빌드가 아니라 Zot에서 pull한다(ECR 방식 그대로 재현). 빌드·푸시는 ./build-and-push.sh 담당.
+    image: ${IMAGE_REGISTRY:-localhost:5000}/dongnemarket-app:${IMAGE_TAG:-latest}
     container_name: dongne-app
     restart: unless-stopped
     depends_on:
@@ -90,8 +123,24 @@ services:
         condition: service_healthy
       ollama-pull:
         condition: service_completed_successfully
+      rustfs:
+        condition: service_started
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      # 요청 제한(IP 당 슬라이딩 윈도우, RateLimitFilter). 기본값은 앱 기본과 동일한
+      # 10초당 60건 = 초당 6건이라 평소 스택 동작은 변하지 않는다. 부하테스트에서
+      # "앱이 아니라 제한기를 재는" 것을 피할 때만 이 통로로 크게 올려 재기동한다.
+      #   RATE_LIMIT_CAPACITY=100000 docker compose --env-file .env up -d app
+      RATE_LIMIT_CAPACITY: ${RATE_LIMIT_CAPACITY:-60}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-10}
+      # [임시] Kotlin 전환 중 auctions·escrows·manner_scores 엔티티에 대응하는 Flyway 마이그레이션이
+      # 아직 없어 prod의 ddl-auto=validate가 기동을 막는다. 온프레미스에서만 .env로 update를 주입해
+      # Hibernate가 누락 테이블을 만들게 한다. 기본값은 validate — AWS 미러 쪽 의미는 그대로다.
+      # 전환 완료 후 V7 마이그레이션이 들어오면 이 줄과 .env의 값을 함께 제거할 것.
+      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-validate}
+      # 데이터 적재 스위치. 프로파일이 아니라 env로 켠다 — 프로파일은 "어느 환경인가"만 표현한다.
+      # 기본 꺼짐. 켜면 데모 데이터(회원 6·상품 6·댓글 5·신고 5)가 기동 시 1회 적재된다(멱등).
+      APP_SEED_DEMO: ${APP_SEED_DEMO:-false}
       DB_URL: jdbc:mysql://mysql:3306/dongne_market?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
       DB_USERNAME: ${DB_USERNAME:-dongne}
       DB_PASSWORD: ${DB_PASSWORD:-dongne1234}
@@ -107,22 +156,29 @@ services:
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
-      # 파일 저장소. 온프레미스 기본값은 local(볼륨 마운트). S3로 쓰려면 .env에서
-      # FILE_STORAGE_TYPE=s3 + AWS_S3_BUCKET/AWS_REGION + AWS 자격증명(~/.aws 마운트 등)을 직접 준비.
-      FILE_STORAGE_TYPE: ${FILE_STORAGE_TYPE:-local}
+      # 파일 저장소. 온프레미스는 s3 타입 + 같은 스택의 RustFS를 가리킨다(클라우드는 같은 타입에 실제 S3).
+      # FILE_STORAGE_S3_ENDPOINT 값이 있으면 S3Config가 정적 자격증명·path-style 경로로 분기한다.
+      FILE_STORAGE_TYPE: ${FILE_STORAGE_TYPE:-s3}
       FILE_STORAGE_LOCAL_BASE_PATH: /app/uploads
-      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
-      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-marketon-images}
+      AWS_REGION: ${AWS_REGION:-us-east-1}          # RustFS는 region을 검증하지 않는다
+      FILE_STORAGE_S3_ENDPOINT: ${FILE_STORAGE_S3_ENDPOINT:-http://rustfs:9000}
+      FILE_STORAGE_S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      FILE_STORAGE_S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      # 힙을 고정값이 아니라 컨테이너 메모리 제한의 비율로 잡는다(JVM이 cgroup 한도를 읽는다).
+      # 이미지 기본값 -Xmx384m은 어느 호스트에 올려도 안전한 보수적 값이지만, 부하를 주면
+      # 애플리케이션 성능이 아니라 힙 부족을 측정하게 된다. 지형별 여유는 여기서 정한다.
+      JAVA_OPTS: ${APP_JAVA_OPTS:--XX:InitialRAMPercentage=50 -XX:MaxRAMPercentage=75}
+    # 상한을 명시해야 위 비율 계산이 의미를 갖는다. 없으면 JVM이 VM 전체(7.75GiB)를 기준으로
+    # 잡아 mysql·ollama·jenkins와 경쟁한다.
+    mem_limit: ${APP_MEM_LIMIT:-2g}
     volumes:
-      - dongne-uploads:/app/uploads     # local 모드일 때만 실제로 쓰인다(신고 증빙 + 상품 이미지 공용)
+      - dongne-uploads:/app/uploads     # local 모드로 되돌릴 때만 쓰인다(신고 증빙 + 상품 이미지 공용)
     expose:
       - "8080"                          # 외부 노출 대신 nginx 통해서만 접근
 
   next:
-    build:
-      context: ../../frontend
-      dockerfile: Dockerfile
-    image: dongnemarket-next:latest
+    image: ${IMAGE_REGISTRY:-localhost:5000}/dongnemarket-next:${IMAGE_TAG:-latest}
     container_name: dongne-next
     restart: unless-stopped
     environment:
@@ -141,6 +197,96 @@ services:
       - "80:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  # ── profile "cicd": 온프레미스 CD (클라우드의 GitHub Actions 대응) ──
+  # 부하테스트 중에는 자원 경쟁을 피하려 내려두는 편이 낫다 → 별도 프로파일로 격리.
+  jenkins:
+    profiles: ["cicd"]
+    build:
+      context: ./jenkins                # 인프라 도구라 Zot을 거치지 않고 로컬 빌드한다
+    image: dongnemarket-jenkins:latest
+    container_name: dongne-jenkins
+    restart: unless-stopped
+    user: root                          # docker.sock 접근용. Dockerfile 주석의 보안 트레이드오프 참고
+    ports:
+      - "8080:8080"
+    environment:
+      JENKINS_TRACK_BRANCH: ${JENKINS_TRACK_BRANCH:-develop}
+      JENKINS_ADMIN_USER: ${JENKINS_ADMIN_USER:-admin}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?jenkins 관리자 비밀번호를 .env에 설정할 것}
+      HOST_REPO_PATH: ${HOST_REPO_PATH:?호스트의 리포 절대경로를 .env에 설정할 것}
+      IMAGE_REGISTRY: ${IMAGE_REGISTRY:-localhost:5000}   # 태그 주소(호스트 데몬 기준)
+      REGISTRY_PROBE: ${REGISTRY_PROBE:-http://zot:5000/v2/}  # 사전 확인 주소(컨테이너 네트워크 기준)
+    volumes:
+      - dongne-jenkins-data:/var/jenkins_home
+      - ./jenkins/casc.yaml:/var/jenkins_home/casc.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 배포 단계가 호스트의 compose 파일·.env를 그대로 쓰도록 "같은 절대경로"로 마운트한다.
+      # 경로가 다르면 compose의 상대경로 바인드 마운트(./nginx.conf 등)가 호스트에서 깨진다.
+      - ${HOST_REPO_PATH:-/nonexistent}:${HOST_REPO_PATH:-/nonexistent}
+
+  # 대시보드를 PNG 로 렌더링해 파일로 남긴다. 계단마다 "그 시점의 화면"을 기록으로 보관하기 위해서다.
+  # 브라우저 스크린샷은 사람이 손으로 떠야 하고 조건이 매번 달라진다 — 이건 URL 하나로 재현된다.
+  grafana-renderer:
+    profiles: ["observability"]
+    image: grafana/grafana-image-renderer:latest
+    container_name: dongne-grafana-renderer
+    restart: unless-stopped
+    environment:
+      ENABLE_METRICS: "true"
+
+  # ── profile "observability" — exporter 3종 ──
+  # 대시보드는 앱·컨테이너·DB·하드웨어 네 구역을 위에서 아래로 훑도록 배치한다.
+  # 앱 지표는 앱이 직접 노출하지만(actuator), 나머지 세 구역은 각각 exporter가 필요하다.
+
+  # 컨테이너별 CPU·메모리·네트워크. 앱이 mem_limit에 눌렸는지 여기서만 판별된다.
+  cadvisor:
+    profiles: ["observability"]
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: dongne-cadvisor
+    restart: unless-stopped
+    privileged: true
+    # 디스크 지표를 끈다. cAdvisor는 컨테이너의 read-write 레이어 크기를 재려고
+    # /var/lib/docker 를 뒤지는데, macOS 호스트에는 그 경로가 없어 조회에 실패하면
+    # 컨테이너 등록 자체를 포기한다 → CPU·메모리까지 통째로 안 잡힌다.
+    # 컨테이너 디스크 사용량은 이 대시보드에서 쓰지 않으므로 꺼도 잃는 게 없다.
+    command:
+      - '--disable_metrics=disk,diskIO,tcp,udp,percpu,sched,process,hugetlb,referenced_memory'
+    ports:
+      - "8081:8080"
+    volumes:
+      # macOS 호스트에는 /sys 도 /var/lib/docker 도 없다. 리눅스용 표준 예제처럼 그것들을
+      # 통째로 마운트하면 빈 디렉터리가 실제 cgroupfs를 가려 개별 컨테이너가 보이지 않는다
+      # (최상위 슬라이스만 잡히고 name 라벨이 붙지 않는다). 필요한 둘만 명시적으로 붙인다.
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # 도커 팩토리 등록 → name 라벨
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro               # VM의 컨테이너별 cgroup 통계
+
+  # 호스트 자원. ⚠️ Docker Desktop에서는 맥이 아니라 컨테이너가 실제로 도는 리눅스 VM이 보인다.
+  node-exporter:
+    profiles: ["observability"]
+    image: prom/node-exporter:v1.8.2
+    container_name: dongne-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.rootfs=/host'
+    pid: host
+    volumes:
+      - /:/host:ro          # Docker Desktop은 rslave 전파 옵션을 지원하지 않는다
+
+  # MySQL 내부 지표(커넥션·슬로우 쿼리·InnoDB 버퍼풀). 전용 계정으로 붙는다.
+  mysqld-exporter:
+    profiles: ["observability"]
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: dongne-mysqld-exporter
+    restart: unless-stopped
+    command:
+      - '--mysqld.address=mysql:3306'
+      - '--mysqld.username=exporter'
+    environment:
+      MYSQLD_EXPORTER_PASSWORD: ${MYSQL_EXPORTER_PASSWORD:?exporter 계정 비밀번호를 .env에 설정할 것}
+    depends_on:
+      mysql:
+        condition: service_healthy
 
   # ── profile "observability": Prometheus · Loki · Grafana · Promtail ──
   prometheus:
@@ -166,6 +312,8 @@ services:
     ports:
       - "3001:3000"                     # ← 3000은 next와 충돌하니 호스트는 3001로
     environment:
+      GF_RENDERING_SERVER_URL: http://grafana-renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana:3000/
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
@@ -208,6 +356,10 @@ services:
       - nginx
 
 volumes:
+  dongne-jenkins-data:
+  dongne-zot-data:
+  dongne-rustfs-data:
+  dongne-rustfs-logs:
   dongne-mysql-data:
   dongne-redis-data:
   dongne-ollama-data:
