@@ -1466,3 +1466,195 @@ non-null 로 조여 두면 메서드 진입 null 검사가 먼저 걸려 **Redis
 `RefreshTokenSaveNullContractTest`(null 입력 시 interaction, 정상 저장 경로)가 이를 고정한다.
 
 이 수정은 5단계 기능 확장이 아니라 **2·3단계에서 발견되지 않았던 Kotlin nullability 호환성 수정**이다.
+
+---
+
+# PR F — 핵심 인증 서비스 (6단계)
+
+대상 2개: `OAuthSignupTransaction`(트랜잭션 경계 컴포넌트) + `AuthService`(orchestrator).
+기준선은 PR #84 병합본(`556c3ac`). controller 3개(7단계)는 손대지 않았다.
+
+## 이 계층에서 조용히 깨지는 것
+
+| 무엇이 | 어떻게 | 대응 |
+|---|---|---|
+| 트랜잭션 propagation | `oauthLogin` 이 클래스 readOnly 를 상속받으면 제공자 네트워크 호출이 DB 커넥션을 붙든 채 일어난다 | `NOT_SUPPORTED` 를 어노테이션 값까지 테스트로 고정 |
+| 별도 빈 분리 | `signUp` 과 `reconcileAfterConflict` 를 같은 빈으로 합치면 self-invocation 으로 프록시가 못 가로채 **두 트랜잭션이 분리되지 않는다** | 별도 클래스·생성자 주입을 테스트로 고정 |
+| 협력자 호출 순서 | state 소비가 제공자 호출보다 뒤로 가면 실패한 시도의 state 가 재사용 가능해진다. 차단 확인이 회원 조회보다 뒤로 가면 차단 상태에서 자격증명 확인이 일어난다 | `inOrder` 테스트로 고정 |
+| null 실패 위치 | 파라미터를 non-null 로 조이면 진입 검사가 삽입돼 원본 첫 역참조 지점보다 실패가 앞당겨진다 | nullable + 원본 역참조 지점 `!!` |
+
+## 유지한 트랜잭션 계약
+
+| 메서드 | 계약 |
+|---|---|
+| `AuthService` 클래스 | `@Transactional(readOnly = true)` |
+| `signup`·`login`·`reissue`·`logout` | 메서드 `@Transactional` (REQUIRED 쓰기) |
+| `startAuthorization`·`oauthLogin` | `Propagation.NOT_SUPPORTED` |
+| `OAuthSignupTransaction.signUp` | `@Transactional` (가입 원자성, 실패 시 전체 롤백) |
+| `OAuthSignupTransaction.reconcileAfterConflict` | `@Transactional(readOnly = true)` (롤백 뒤 **새** 트랜잭션 재조회) |
+
+`javap -v` 로 6개 메서드 전부 원본과 동일한 위치·값임을 확인했고,
+`AuthCoreServiceTransactionContractTest` 가 고정한다.
+
+## null 실패 위치 — 원본에서 역참조 앞에 부수효과가 있는 자리 🔴
+
+원본 Java 는 null 인자를 **처음 역참조하는 지점**에서 NPE 로 실패하고, 그 앞의 부수효과는 이미 실행된
+상태였다. 이 위치가 특히 눈에 띄는 두 자리:
+
+| 메서드 | null 이전에 실행되는 것 | 원본 실패 지점 |
+|---|---|---|
+| `startAuthorization(null, …)` | state·code_verifier 난수 2회 + SHA-256 해시 | `client.provider()` |
+| `signUp(null)` | 더미 비밀번호 `encode()` 1회 | `identity.provider()` |
+| `generateNickname(null)` (private) | `StringBuilder` 생성 + **난수 10회 소비** | `provider.name()` |
+
+`generateNickname` 은 컴파일 에러로 드러났다 — `OAuthUserIdentity.provider` 가 nullable 인데 파라미터를
+non-null 로 두면 호출부에 `!!` 가 강제되어 실패가 진입 시점으로 앞당겨지고 `secureRandom` 소비량까지
+달라진다. 파라미터를 nullable 로 두고 원본 역참조 지점(`provider!!.name`)에 `!!` 를 뒀다.
+`AuthCoreServiceNullabilityContractTest` 가 리플렉션 + 컴파일 fixture + interaction 검증으로 고정한다.
+
+## Java 관용구와 다른 Kotlin 기본값 두 개
+
+| 원본 Java | 그대로 옮기면 | 실제 전환 |
+|---|---|---|
+| `String.toLowerCase()` (기본 로케일) | Kotlin `lowercase()` 는 `Locale.ROOT` 고정 | `lowercase(Locale.getDefault())` |
+| `String.getBytes()` (플랫폼 기본 charset) | Kotlin `toByteArray()` 는 UTF-8 고정 | `toByteArray(Charset.defaultCharset())` |
+
+둘 다 현재 값 범위(provider enum 이름, base64url ASCII)에서는 결과가 같지만, 의미를 바꾸지 않고 옮겼다.
+
+## 허용한 차이 — `reissue` 의 `findById` 전달 🔴
+
+`memberRepository.findById` 는 Spring Data `@NonNullApi` 라 Kotlin 에서 non-null `Long` 을 요구한다.
+원본 Java 는 null 을 그대로 전달했고 `findById` 내부 `Assert.notNull` 이 `IllegalArgumentException` 을
+던졌다. Kotlin 은 null 그대로 전달하는 형태가 불가능해 `requireNotNull(memberId)` 로 옮겼다 —
+같은 `IllegalArgumentException` 계열, 같은 문장 위치이며 메시지는 다르다(메시지 의존 코드는 금지라 무해).
+실제로는 `validateAndGetMemberId` 가 모든 실패 경로에서 `BusinessException` 을 던지고 non-null 을
+반환하므로 **이 지점은 도달 불가다.**
+
+`oauthLogin` 의 member 는 `MemberSocialAccount.member`(Kotlin 엔티티의 `Member?`)가 흘러들어오므로
+private 헬퍼(`issueTokens`·`validateActiveStatus`)도 nullable 파라미터 + 원본 역참조 지점 `!!` 로 맞췄다.
+
+## 테스트 작성 관행 — Mockito 매처와 Kotlin non-null 파라미터
+
+Mockito 매처(`any`·`eq`·`captor.capture()`)는 null 을 반환하는데, Kotlin **non-null 파라미터** 자리에
+넣으면 매처가 등록되기도 전에 호출부 intrinsic null 검사("must not be null")가 터진다.
+`ArgumentCaptor.forClass` 반환이 platform 제네릭이라 헬퍼의 타입 추론까지 platform 으로 오염되는 것도
+같은 계열이다. 매처를 등록한 뒤 타입만 맞춘 값을 돌려주는 헬퍼(`anyObj`/`eqObj`/`cap`,
+mockito-kotlin 과 같은 방식) + captor 변수의 명시적 Kotlin 타입 선언으로 우회했다.
+
+## 검증
+
+- `javap -public` 원본 대조: 두 클래스 모두 public 표면 동일 (유일한 추가는 `private const` 로 인한
+  `Companion` static 필드 — 5단계 서비스들과 동일 패턴)
+- 생성자 13개 파라미터 순서, `@Value` 2개 primitive `long`/`int` 유지
+- 신규 계약 테스트 46건: JVM 표면 13 + 트랜잭션 8 + 호출 순서 15 + nullability 10
+- 전체 `test` 923(기존 877 + 신규 46) / 실패·오류 0 / skip 0
+- `integrationTest` 44 / 실패·오류 0 / 비활성 1(기존 `OAuthEndpointRateLimitOrderTest`)
+- `OAuthSignupTransactionConcurrencyTest` 2/2 통과 — 동시 가입 레이스에서 reconcile 경로 실동작 확인
+- `bootJar` 성공, strict ktlint(1.5.0) 위반 0
+
+---
+
+# PR G — 컨트롤러 (7단계, 마지막)
+
+대상 3개: `AuthController`(8 endpoint) + `EmailVerificationController`(2) + `PasswordResetController`(2).
+기준선은 PR #86 병합본(`6515742`). **이 브랜치 기준 auth main Java 0개** — PR 병합 후 develop 기준
+전환 완료 예정.
+
+## API 12개 (전후 method·path 차이 0)
+
+| Method | Path | Handler |
+|---|---|---|
+| POST | `/api/auth/signup` | signup |
+| POST | `/api/auth/login` | login |
+| POST | `/api/auth/reissue` | reissue |
+| POST | `/api/auth/logout` | logout |
+| POST | `/api/auth/oauth/kakao/authorization` | kakaoAuthorization |
+| POST | `/api/auth/oauth/google/authorization` | googleAuthorization |
+| POST | `/api/auth/oauth/kakao/login` | kakaoLogin |
+| POST | `/api/auth/oauth/google/login` | googleLogin |
+| POST | `/api/auth/email-verifications` | requestVerification |
+| POST | `/api/auth/email-verifications/confirm` | confirmVerification |
+| POST | `/api/auth/password-resets` | requestReset |
+| POST | `/api/auth/password-resets/confirm` | confirmReset |
+
+## 전후 비교 방법 — snapshot 이 계약이다
+
+전환 **전** Java 상태에서 `RequestMappingHandlerMapping` 의 (method, path, handler, 파라미터
+annotation, 제네릭 반환 타입) 과 `/v3/api-docs` 전문을 임시 파일로 떠 두고, 전환 후 같은 방식으로
+다시 떠 diff 했다 — **mapping 12개 동일, OpenAPI 문서 바이트 단위 동일.**
+`javap -public` 도 3개 클래스 모두 동일(추가는 `private const` 로 인한 `Companion` static 필드뿐,
+`EmailVerificationController` 는 상수가 없어 그것도 없음).
+
+## endpoint 파라미터 nullability — Spring binding 의미가 기준 🔴
+
+이 계층에서는 "Java 참조형 → Kotlin nullable" 원칙을 **그대로 적용하면 안 되는 자리가 있다.**
+Kotlin nullability 가 Spring MVC 의 required 판정(`MethodParameter.isOptional()`)에 개입하기 때문이다.
+
+| 파라미터 | Kotlin | 이유 |
+|---|---|---|
+| `@Valid @RequestBody` 5곳 | **non-null** | nullable 이면 Spring 이 body 를 선택 사항으로 해석 — 원본의 "body 누락 → `HttpMessageNotReadableException`" 이 null 통과로 바뀐다 |
+| `@CookieValue(required = false)` | `String?` | 쿠키가 없으면 Spring 이 null 을 주입한다 |
+| `@AuthenticationPrincipal` | `Long?` | 원본 boxed `Long`, principal 미존재 시 null 전달 |
+| `HttpServletRequest`/`Response` | non-null | Spring MVC 가 항상 주입한다 |
+
+## body 누락·malformed JSON 은 500 이 원본 계약이다 🔴
+
+테스트 초안은 body 누락을 400 으로 가정했다가 500 을 받았다. 회귀인지 확인하기 위해 **원본
+Java(`6515742`)를 임시 detached worktree 에서 실측**한 결과: body 누락 500 / malformed JSON 500 /
+빈 객체 `{}` 400. 전역 핸들러가 `HttpMessageNotReadableException` 을 따로 다루지 않아 generic
+`Exception` → 500 으로 떨어지는 **기존 동작**이다. 전환은 이를 그대로 보존하고(위 non-null 결정이
+바로 이 보존이다), 개선(400 매핑 추가)은 담당 범위 밖이라 하지 않았다.
+
+## 쿠키 계약 (그대로)
+
+- `refreshToken`: HttpOnly / Secure=`auth.cookie.secure` / SameSite=Lax / Path=`/` / host-only.
+  login autoLogin=true·reissue·OAuth login 은 설정 Max-Age 영속, autoLogin=false 는 세션 쿠키,
+  logout 은 빈 값 + Max-Age 0. `Set-Cookie` 헤더 방식.
+- `oauth_bcid`: HttpOnly / Secure 동일 / SameSite=Lax / Path=`/api/auth/oauth` / host-only /
+  설정 Max-Age. 있으면 재사용(값 유지, Max-Age 갱신 재전송), blank 는 미존재 취급, 없으면
+  32바이트 URL-safe 무패딩 발급. **로그인 완료 endpoint 에서는 만들지 않고**(없으면
+  `INVALID_OAUTH_STATE`) 완료 후에도 지우지 않는다(다른 탭 보호). 원문은 service 로 가지 않고
+  SHA-256 hex 만 전달한다.
+- OAuth 4개 endpoint 의 쿠키 계약은 기존 테스트에 없었다 — `AuthControllerCookieContractTest` 가
+  처음 고정한다.
+
+## 유지한 나머지 계약
+
+- provider별 client 고정: kakao endpoint → `KakaoOAuthClient`, google → `GoogleOAuthClient`
+  (사용자 입력·enum 파싱으로 바꾸지 않음, bean 동일성까지 테스트로 고정)
+- X-Forwarded-For 첫 값 `trim`, null/blank 면 `remoteAddr`, User-Agent 그대로 — 신뢰 정책을
+  강화하지 않았다(동의 이력 증적용이라는 원본 판단 유지)
+- SHA-256 + `HexFormat` + 예외 메시지, `String.getBytes()` 의 플랫폼 charset 의미는
+  `toByteArray(Charset.defaultCharset())` 로 유지 (6단계와 같은 계열)
+- 상태코드·메시지: 회원가입 201, 이메일 인증 요청 201, 나머지 200. 비밀번호 재설정 요청의
+  중립 메시지(계정 존재 비노출)는 상수 그대로.
+- `ApiResponse.success` overload 사용처 동일. 단 PasswordReset 의 `success(message, null)` 은
+  Kotlin 제네릭상 `T = Void` 에 null 을 못 넘겨 반환 선언을 `ApiResponse<Void?>` 로 했다 —
+  JVM generic signature 는 `Ljava/lang/Void;` 로 동일 소거되어 Java 원본과 시그니처·JSON·OpenAPI 가
+  같다(제네릭 반환 타입 테스트 + api-docs diff 로 확인).
+
+## 버린 대안
+
+- `@RequestBody` nullable 통일 — Spring required 의미가 바뀌어 폐기 (위 🔴)
+- `requireNotNull` 진입 가드 — 예외 종류가 바뀌므로 컨트롤러에는 두지 않음
+- 쿠키 유틸 공통화·XFF 파서 개선·provider enum 통합 endpoint — 순수 전환 범위 밖
+
+## 추가 테스트 (6파일 43건)
+
+`AuthControllerJvmSurfaceTest`(12) · `AuthControllerRequestMappingContractTest`(3) ·
+`AuthControllerCookieContractTest`(8) · `AuthControllerOrchestrationContractTest`(12) ·
+`AuthSimpleControllerContractTest`(4) · `AuthControllerValidationSmokeTest`(4).
+smoke 는 endpoint 12개가 실제 context 에서 전부 요청을 받는 것(404/405 아님)까지 고정한다.
+Mockito 매처의 Kotlin non-null 파라미터 충돌은 6단계와 같은 typed helper 로 우회했다.
+
+## 검증
+
+- baseline(전환 전, 최신 develop): `test` 923/0/0/0, `integrationTest` 44/0/비활성 1, concurrency 2/2,
+  `bootJar` 성공 — 1차 `integrationTest` 에서 Redis command timeout 1건(인프라 flake)이 있었고
+  파일 무수정 상태 재실행에서 전건 통과를 확인한 뒤 진행했다
+- 최종: `test` **966**(신규 43) / 실패·오류·skip 0, auth 420, `integrationTest` 44/0/비활성 1
+  (기존 `OAuthEndpointRateLimitOrderTest`, 무수정), concurrency 2/2, compile 4종·`bootJar` 성공,
+  strict ktlint(1.5.0) 위반 0
+- Spring context 기동·controller bean 3개·mapping 12개 등록은 실제 context 테스트로,
+  포트 bind 는 기존 `ChatWebSocketTest`(RANDOM_PORT) 통과로 확인
+- 외부 OAuth provider·SMTP·운영 credential 미사용 (테스트 값 전부 명백한 더미)
