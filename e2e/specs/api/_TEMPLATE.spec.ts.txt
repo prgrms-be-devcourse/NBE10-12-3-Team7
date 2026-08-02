@@ -1,0 +1,63 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 새 스펙을 시작할 때 이 파일을 복사해서 <도메인>.spec.ts 로 저장한다.
+//   예) cp _TEMPLATE.spec.ts.txt escrow.spec.ts
+//
+// 확장자가 .txt 인 이유: 템플릿이 그대로 테스트로 실행되지 않게 하려고.
+// 복사한 뒤에는 반드시 .spec.ts 로 저장할 것.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { test, expect } from '../../fixtures/test';
+import { expectError, unwrap } from '../../support/api';
+import { uniqueTitle } from '../../support/unique';
+
+test.describe('<도메인> — <검증하려는 것 한 줄>', () => {
+  /**
+   * 정상 여정 (happy path). 사용자가 실제로 밟는 순서 그대로 쓴다.
+   * test.step 으로 끊으면 리포트가 곧 흐름도가 된다.
+   */
+  test('<어떤 사용자가> <무엇을 하면> <어떤 결과가 된다>', async ({ user }) => {
+    const created = await test.step('<1단계: 리소스를 만든다>', async () => {
+      const res = await user.api.post('/api/<경로>', {
+        data: { title: uniqueTitle('e2e') },
+      });
+      return await unwrap<{ id: number }>(res, 201);
+    });
+
+    await test.step('<2단계: 만든 리소스를 조회한다>', async () => {
+      const res = await user.api.get(`/api/<경로>/${created.id}`);
+      const found = await unwrap<{ id: number }>(res, 200);
+      expect(found.id).toBe(created.id);
+    });
+  });
+
+  /**
+   * 권한 검증. otherUser 픽스처가 "나와 무관한 다른 회원"을 만들어준다.
+   * 단위 테스트는 시큐리티 필터를 건너뛰기 때문에, 이건 e2e 에서만 진짜로 검증된다.
+   */
+  test('남의 리소스는 수정할 수 없다', async ({ user, otherUser }) => {
+    const res = await user.api.post('/api/<경로>', { data: { title: uniqueTitle('e2e') } });
+    const mine = await unwrap<{ id: number }>(res, 201);
+
+    const attempt = await otherUser.api.patch(`/api/<경로>/${mine.id}`, {
+      data: { title: '남이 바꾼 제목' },
+    });
+
+    await expectError(attempt, 403, '<ERROR_CODE>');
+  });
+
+  /**
+   * 잘못된 상태 전이. "돈 / 권한 / 상태전이 / 동시성" 네 축 중
+   * 상태전이에 해당하는 시나리오는 반드시 실패 케이스까지 한 쌍으로 쓴다.
+   */
+  test('<허용되지 않은 전이>를 시도하면 <ERROR_CODE> 로 거절된다', async ({ user }) => {
+    const res = await user.api.post('/api/<경로>/<id>/<행위>');
+    await expectError(res, 400, '<ERROR_CODE>');
+  });
+});
+
+// ── 체크리스트 (PR 올리기 전에 스스로 확인) ────────────────────────────────────
+// [ ] 고정 ID / 고정 이메일 / 시드 데이터에 의존하지 않는가? (병렬 실행에서 깨진다)
+// [ ] 에러 케이스에서 ErrorCode 까지 단언했는가? (상태코드만 보면 통과가 무의미)
+// [ ] 테스트 이름만 읽고 무엇을 검증하는지 알 수 있는가?
+// [ ] 3번 연속 돌려서 3번 다 통과하는가? (npx playwright test <파일> --repeat-each=3)
+// [ ] 앞 테스트가 남긴 데이터에 의존하지 않는가? (실행 순서는 보장되지 않는다)
