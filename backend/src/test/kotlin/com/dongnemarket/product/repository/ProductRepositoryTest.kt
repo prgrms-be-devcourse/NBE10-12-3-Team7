@@ -666,6 +666,64 @@ class ProductRepositoryTest {
         assertThat(products).doesNotContain(songpaProduct)
     }
 
+    /**
+     * `ProductSpecification.toRegionCodePrefix` 는 코드가 "00000000" 으로 끝나면 앞 2자리,
+     * "00000" 으로 끝나면 앞 5자리로 자른다. 위 테스트가 5자리(시군구) 분기를 덮고,
+     * 이 테스트가 2자리(시도) 분기를 덮는다. 2자리 분기가 깨지면 예외가 아니라 **빈 목록**이
+     * 나오므로 다른 시도 상품이 섞이지 않는지까지 함께 확인한다.
+     */
+    @Test
+    fun `상품 목록 조건은 시도 regionCode를 지정하면 산하 모든 시군구 상품을 조회한다`() {
+        val member = memberRepository.save(Member.createUser("region-sido@example.com", "encodedPassword", "판매자"))
+        val category = categoryRepository.save(Category("지역필터시도"))
+        val yeoksam = saveGangnamWithDong()
+        val jamsil = saveSongpaWithDong()
+        val busanDong = saveBusanWithDong()
+        val gangnamProduct =
+            productRepository.save(
+                Product.create(
+                    member,
+                    category,
+                    "강남 상품",
+                    "강남 상품 설명",
+                    BigDecimal.valueOf(10000),
+                    yeoksam,
+                ),
+            )
+        val songpaProduct =
+            productRepository.save(
+                Product.create(
+                    member,
+                    category,
+                    "송파 상품",
+                    "송파 상품 설명",
+                    BigDecimal.valueOf(20000),
+                    jamsil,
+                ),
+            )
+        val busanProduct =
+            productRepository.saveAndFlush(
+                Product.create(
+                    member,
+                    category,
+                    "부산 상품",
+                    "부산 상품 설명",
+                    BigDecimal.valueOf(30000),
+                    busanDong,
+                ),
+            )
+
+        val products =
+            productRepository.findAll(
+                ProductSpecification.list(listOf("1100000000"), null),
+                Sort.by(Sort.Direction.DESC, "id"),
+            )
+
+        // 서울(11) 산하 두 개 시군구 상품이 시군구를 가리지 않고 모두 잡힌다.
+        assertThat(products).containsExactly(songpaProduct, gangnamProduct)
+        assertThat(products).doesNotContain(busanProduct)
+    }
+
     @Test
     fun `상품 목록 조건은 regionCode 2개를 지정하면 두 지역 상품을 최신순으로 조회한다`() {
         val member = memberRepository.save(Member.createUser("region-two@example.com", "encodedPassword", "판매자"))
@@ -1099,6 +1157,19 @@ class ProductRepositoryTest {
                 .findByCode("1117000000")
                 .orElseGet { regionRepository.save(Region.child("1117000000", 2, saveSeoul(), "서울특별시 용산구", "용산구")) }
         return saveDong(yongsan, "1117013000", "서울특별시 용산구 이태원동", "이태원동")
+    }
+
+    /** 서울(11)과 prefix 2자리가 다른 시도. 시도 필터가 다른 시도를 걸러내는지 확인하는 데 쓴다. */
+    private fun saveBusanWithDong(): Region {
+        val busan =
+            regionRepository
+                .findByCode("2600000000")
+                .orElseGet { regionRepository.save(Region.root("2600000000", "부산광역시", "부산광역시")) }
+        val haeundae =
+            regionRepository
+                .findByCode("2635000000")
+                .orElseGet { regionRepository.save(Region.child("2635000000", 2, busan, "부산광역시 해운대구", "해운대구")) }
+        return saveDong(haeundae, "2635010300", "부산광역시 해운대구 우동", "우동")
     }
 
     private fun saveDong(
