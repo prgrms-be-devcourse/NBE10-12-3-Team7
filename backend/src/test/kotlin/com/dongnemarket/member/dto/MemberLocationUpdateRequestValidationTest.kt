@@ -77,6 +77,31 @@ class MemberLocationUpdateRequestValidationTest {
     }
 
     @Test
+    fun `null 원소는 index 0 위반 1개다`() {
+        // Jackson 이 [null] 을 역직렬화하면 제네릭 원소 nullability 는 런타임에 강제되지 않아
+        // null 원소가 실제로 리스트에 들어온다 — Java 원본과 동일한 입력을 재현한다.
+        @Suppress("UNCHECKED_CAST")
+        val listWithNull = listOf<String?>(null) as List<String>
+
+        val violations = validator.validate(MemberLocationUpdateRequest(listWithNull)).filter { it.message == elementMessage }
+
+        assertThat(violations).hasSize(1)
+        assertThat(violations[0].message).isEqualTo(elementMessage)
+        assertThat(violations[0].propertyPath.toString()).isEqualTo("regionCodes[0].<list element>")
+    }
+
+    @Test
+    fun `정상 코드와 null 원소가 섞이면 null 원소의 index 1 위반 1개다`() {
+        @Suppress("UNCHECKED_CAST")
+        val listWithNull = listOf("1168010100", null) as List<String>
+
+        val violations = validator.validate(MemberLocationUpdateRequest(listWithNull)).filter { it.message == elementMessage }
+
+        assertThat(violations).hasSize(1)
+        assertThat(violations[0].propertyPath.toString()).isEqualTo("regionCodes[1].<list element>")
+    }
+
+    @Test
     fun `null 목록은 NotEmpty 소관이라 원소 위반을 만들지 않는다`() {
         val violations = validator.validate(MemberLocationUpdateRequest(null))
 
