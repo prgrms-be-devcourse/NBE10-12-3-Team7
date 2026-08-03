@@ -188,7 +188,7 @@ class ChatService(
 
         // 수신자(상대방)의 안읽음 배지를 실시간 갱신하도록 신호를 발행한다. 커밋 후(AFTER_COMMIT) 처리되므로
         // 재조회 시 이 메시지가 이미 반영돼 있다. 자기 채팅은 불가라 수신자는 항상 상대방이다(프록시 id 접근).
-        eventPublisher.publishEvent(ChatMessageSentEvent(opponentOf(room, memberId).id))
+        eventPublisher.publishEvent(ChatMessageSentEvent(opponentOf(room, memberId).id!!))
         return ChatMessageResponse.from(saved)
     }
 

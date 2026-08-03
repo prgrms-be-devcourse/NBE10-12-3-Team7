@@ -85,6 +85,20 @@ Java → Kotlin 전환을 도메인 단위로 진행한다. 전환된 파일은 
     DTO 를 `data class` 로 옮길 때 `@field:NotBlank` 로 명시하지 않으면 **검증이 걸리지 않을 수 있다.**
     (현재 검증 어노테이션 58곳 / 22파일 — 첫 DTO 전환 시 "빈 문자열 → 400" 테스트로 확인할 것)
   - 어노테이션마다 `@Target` 을 찾아보지 않아도 되도록 **엔티티·DTO 주 생성자는 `@field:` 로 통일**한다.
+- **컨테이너 원소 검증(`List<@NotBlank String>`)은 Kotlin 에서 조용히 사라진다.** 타입 인자(TYPE_USE)
+  어노테이션은 `-Xemit-jvm-type-annotations` 없이는 바이트코드에 남지 않아 **Bean Validation 도
+  springdoc 도 읽지 못한다**(컴파일·기동은 전부 정상이라 테스트 없이는 안 잡힌다 — member 전환에서
+  실제 발생, javap 으로 `RuntimeVisibleTypeAnnotations` 부재 확인). 전역 플래그는 이미 전환된
+  도메인의 현재 런타임·OpenAPI 계약까지 바꾸므로 쓰지 않는다. 대신 **역할을 세 곳으로 나눠 선언하고
+  반드시 함께 수정한다**:
+  1. 타입 인자 어노테이션 — 원래 계약·소스 의도 표기(런타임 동작 없음)
+  2. 필드 레벨 custom constraint — 실제 런타임 검증. member 의 `@NotBlankElements` 가 선례:
+     원소별 위반과 Java 원본과 동일한 `필드[i].<list element>` 경로를 `addContainerElementNode` 로 재현
+  3. `@field:ArraySchema(schema = @Schema(...))` — OpenAPI `items` 제약 수동 고정
+     (`implementation` 을 명시해야 `type` 이 유지된다)
+  회귀는 Validator 직접 검증 테스트로 고정한다(`MemberLocationUpdateRequestValidationTest` 참고 —
+  MockMvc 는 서비스 2차 방어에 가려져 소실을 못 잡는다). ⚠️ `ProductCreateRequest/ProductUpdateRequest.imageUrls`
+  의 원소 `@NotBlank` 는 현재 비활성 상태로 남아 있다(별도 논의 필요).
 - **값을 주입받는 어노테이션은 `@param:`** — `@Value` 는 PARAMETER 를 허용하며 생성자 주입에서는 그게 맞다.
 - **엔티티 프로퍼티는 `private set` 대신 `protected set`** — allOpen 이 프로퍼티도 open 으로 만들어
   Kotlin 이 open 프로퍼티의 private setter 를 금지한다(컴파일 에러).
