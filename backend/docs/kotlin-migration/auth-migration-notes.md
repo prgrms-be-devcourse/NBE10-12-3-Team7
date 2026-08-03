@@ -1661,17 +1661,50 @@ Mockito 매처의 Kotlin non-null 파라미터 충돌은 6단계와 같은 typed
 
 ---
 
-# PR H — Java 테스트 전환 (회귀 안전망 세대교체)
+# PR H — Java 테스트 전환과 잔존 제거 (회귀 안전망 세대교체)
 
-브랜치 `feature/auth_kotlin_tests` / 기준 PR G(`feature/auth_kotlin_controller`) HEAD.
-main 은 PR G 로 auth Java 0개가 됐지만, 1~7단계 내내 **회귀 안전망 역할이라 의도적으로 Java 로
-남겨둔 기존 테스트 23개**가 마지막 잔여였다. 그중 22개(약 4,100줄)를 전환했다.
+브랜치 `feature/auth_kotlin_tests` / 기준 develop `cd73e50` (member Kotlin 전환 #99 병합 후로 rebase).
+1~7단계 내내 **회귀 안전망 역할이라 의도적으로 Java 로 남겨둔 기존 테스트 23개**가 마지막 잔여였다.
+22개(약 4,100줄)는 1:1 전환, 인터롭 테스트 1개는 아래 「계약 분해」로 처리했다.
+결과: **backend 전체(main·test)에서 `.java` 0개**, `src/test/java` 소스셋 디렉터리 삭제.
 
-## 제외 1개 — `AuthKotlinInteropCompatibilityTest` 는 Java 로 남긴다
+## 인터롭 테스트 계약 분해 — "Java 로 남긴다"를 뒤집은 이유
 
-이 테스트의 검증 수단은 **"Java 소스에서 그 호출이 컴파일된다"는 사실 자체**다
-(record 접근자 이름 유지, `isXxx()` getter 유지 등 — PR A 절 참고). Kotlin 으로 옮기는 순간
-검증 대상이 사라진다. 도메인 내 유일한 의도적 Java 잔존이며, 파일 상단 주석에 사유를 남겼다.
+`AuthKotlinInteropCompatibilityTest`(42건)의 검증 수단은 "Java 소스에서 그 호출이 컴파일된다"는
+사실 자체였다. 그런데 rebase 기준 develop 에서 member·global 시더까지 전환이 끝나
+**저장소에 Java 호출자가 0**이 됐다 — 호출자 없는 호출-호환성 검증은 대상을 잃는다.
+그래서 42개 항목을 전수 분류했다: **언어와 무관하게 유효한 계약은 Kotlin 으로 대체하고,
+Java 호출 호환성만 검증하던 항목은 제거한다.**
+
+| 원 그룹(테스트 수) | 제거 | 대체 | 비고 |
+|---|---|---|---|
+| JvmRecords (4) | `isRecord`·record 접근자 Java 호출 (2) | `oidcNonce` null 허용 🔴 · record 값 동등성 (2) | null 허용은 카카오 실동작 계약(PR A 절) |
+| PlainDtos (5) | Java 생성자/팩토리 호출·JVM getter 이름 (2) | equals/hashCode=Object 선언 · 값 동등성 없음 · nullable 유지 앵커 (3) | data class 화 방지는 언어 무관 설계 계약 |
+| JsonContract (4) | — | 전부 (4) | 프론트·모바일과의 와이어 계약 |
+| BeanValidation (5) | — | 전부 (5) | 제약·메시지는 사용자-노출 계약 |
+| OAuthLoginRequest 생성자 표면 (5) | 리플렉션 표면 3 (public 생성자 0·protected 유일·non-final) | Jackson 역직렬화 동작 (2) | 표면은 Java 소비자 전용, 동작은 유지 |
+| 요청 DTO protected 생성자 표면 (6) | 전부 (6) | — | 하위클래스 0·`@ModelAttribute` 0·Java 소스 0 |
+| RequestDtoJackson (5) | — | 전부 (5) | 누락/null/blank/boolean 와이어 동작 |
+| RequestDtoValidation (3) | 무인자 생성자 우회 검증 (1) | 역직렬화·검증 분리 · 메시지 (2) | |
+| ResponseDtoSurface (4) | 전부 (4) — finality·`@JvmStatic` Java 호출·생성자 가시성 | — | |
+| public setter 부재 (1) | — | 전부 (1) | 불변 설계는 Kotlin API 에도 유효 |
+| **계 (42)** | **18 항목** | **24 항목 → 중복 병합해 18개 테스트** | 대체처: `AuthDtoContractTest.kt` |
+
+오해 방지 두 가지:
+- boolean getter 의 **JVM 이름**(`isVerified()`) 검증은 제거했지만 **JSON 필드명**(`verified`,
+  `isVerified` 필드 미생성) 검증은 대체 테스트가 그대로 유지한다 — PR A 의 JSON 소실 회귀 방어는 살아 있다.
+- 제거는 "표면을 바꿔도 된다"가 아니라 "그 표면을 고정할 소비자가 사라졌다"는 뜻이다. main 코드는
+  이 PR 에서 한 줄도 바꾸지 않았다(`@JvmRecord`·`@JvmStatic`·protected 생성자 등 전부 그대로).
+
+## rebase 가 강제한 수정 — member Kotlin 전환(#99) 반영 2종
+
+H 의 테스트들은 Java `Member` 기준으로 전환됐는데 rebase 로 member 가 Kotlin 이 되면서
+`AuthServiceTest.kt` 가 컴파일 에러를 냈다. 수정은 언어 경계가 강제한 것뿐이다.
+
+- `Member.createUser`/`createSocialUser` 의 파라미터가 Kotlin non-null `String` 이 되어
+  `request.email!!` 9곳 (전부 직전 줄에서 리터럴로 생성한 요청이라 null 불가능 — 동작 동일)
+- `.extracting<AgreementType>(MemberAgreement::getAgreementType)` → `::agreementType`
+  (Java getter 참조가 Kotlin 프로퍼티 참조로 — 동일 접근자 호출)
 
 ## 원칙 — main 전환과 무엇이 다른가
 
@@ -1714,7 +1747,8 @@ java.lang.NullPointerException: cap(...) must not be null
 ## 파일별 주요 판단 (전부 언어 경계가 강제한 것)
 
 - **Mockito 헬퍼는 필요한 곳에만**: 매처 사용처 전수 감사 결과 대부분의 대상 파라미터가
-  nullable(`String?` 등) 또는 Java 잔존(member)의 platform 타입이라 표준 `any()` 로 충분했다.
+  nullable(`String?` 등) 또는 당시 Java 였던 member 의 platform 타입이라 표준 `any()` 로 충분했다
+  (rebase 로 member 가 Kotlin 이 된 뒤에도 해당 지점은 nullable·`JpaRepository` 플랫폼 시그니처라 그대로 유효 — 컴파일로 확인).
   helper 가 실제 필요한 곳은 non-null `EmailSender.send` 를 verify 하는 2개 파일의 `cap()` 뿐
   (`PasswordResetControllerTest`·`PasswordResetServiceTest`). 불필요한 파일에 복사하지 않았다(죽은 코드).
 - **BDD 스타일 유지**: `AuthServiceTest` 는 원본이 `BDDMockito.given` 일색이라 그대로 —
@@ -1731,9 +1765,14 @@ java.lang.NullPointerException: cap(...) must not be null
 
 ## 검증
 
-- baseline(전환 전): `test` 966/0/0/0 · `integrationTest` 44/실패 0/비활성 1 — XML 리포트에서
-  auth 클래스별 테스트 수 전수 확보
-- 최종: `test` **966**/0/0/0 · `integrationTest` **44**/0/비활성 1(`OAuthEndpointRateLimitOrderTest`,
-  `@Disabled` 사유 문자열까지 보존) — **클래스별 테스트 수 diff 0**
-- 전환 파일 ktlint 위반 0 · compile 전 소스셋 · `bootJar` 성공
-- 남은 auth Java: `AuthKotlinInteropCompatibilityTest` 1개 (위 사유로 의도적 유지)
+- baseline: develop `cd73e50` 을 **깨끗한 임시 worktree** 에 받아 clean 실행 —
+  `test` **984**/실패 0/skip 0 · `integrationTest` 44/실패 0/비활성 1 · ktlint·`bootJar` 성공.
+  전 클래스의 (클래스, 테스트 수)를 XML 리포트에서 전수 확보
+- 최종(H): `clean test` **960**/실패 0/skip 0 · `integrationTest` **44**/0/비활성 1
+  (`OAuthEndpointRateLimitOrderTest`, `@Disabled` 사유 문자열까지 보존) ·
+  `ktlintTestSourceSetCheck` 통과 · `bootJar` 성공
+- **클래스별 대조: 의도적 차이만 존재** — 인터롭 suite 10개(−42)와 `AuthDtoContractTest`(+18)뿐,
+  그 외 전 클래스 테스트 수 동일. 960 = 984 − 42 + 18
+- `compileTestJava` 는 소스 0 으로 NO-SOURCE — 검증 대상에서 제외
+- Java 잔존 전수 조사: `git ls-files 'backend/**/*.java'` 0건 / 디스크 0건 /
+  `src/test/java` 디렉터리 삭제 (`src/main/java` 는 이미 develop 에서 파일 0)
