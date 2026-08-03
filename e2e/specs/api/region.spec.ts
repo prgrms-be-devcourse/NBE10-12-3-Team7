@@ -62,16 +62,17 @@ function sidoList(api: APIRequestContext): Promise<RegionSummary[]> {
 function threeLevel(api: APIRequestContext): Promise<Hierarchy> {
   return (threeLevelCache ??= (async () => {
     for (const sido of await sidoList(api)) {
-      const sigungu = (await regions(api, sido.code)).find((r) => r.level === 2);
-      if (!sigungu) continue;
-      const dong = (await regions(api, sigungu.code)).find((r) => r.level === 3);
-      if (dong) return { sido, sigungu, dong };
+      for (const sigungu of await regions(api, sido.code)) {
+        if (sigungu.level !== 2) continue;
+        const dong = (await regions(api, sigungu.code)).find((r) => r.level === 3);
+        if (dong) return { sido, sigungu, dong };
+      }
     }
     throw new Error('3단 계층 지역을 찾지 못했다 — RegionSeeder 확인 (npm run smoke)');
   })());
 }
 
-/** 시·도 바로 아래가 동인 2단 계층을 찾는다(세종). 없으면 테스트를 skip 한다. */
+/** 시·도 바로 아래가 동인 2단 계층을 찾는다(세종). 없으면 실패시킨다. */
 function twoLevel(api: APIRequestContext): Promise<Hierarchy> {
   return (twoLevelCache ??= (async () => {
     for (const sido of await sidoList(api)) {
