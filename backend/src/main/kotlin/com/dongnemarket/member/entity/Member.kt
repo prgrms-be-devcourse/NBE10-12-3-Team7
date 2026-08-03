@@ -44,7 +44,6 @@ class Member private constructor(
     @field:Column(name = "local_login_enabled", nullable = false)
     val isLocalLoginEnabled: Boolean,
 ) : BaseTimeEntity() {
-
     @field:Id
     @field:GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null

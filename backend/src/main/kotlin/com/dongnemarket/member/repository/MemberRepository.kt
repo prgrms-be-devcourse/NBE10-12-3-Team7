@@ -11,12 +11,14 @@ import java.util.Optional
  * `!!` 없이 전달한다.
  */
 interface MemberRepository : JpaRepository<Member, Long> {
-
     fun existsByEmail(email: String?): Boolean
 
     fun existsByNickname(nickname: String?): Boolean
 
-    fun existsByNicknameAndIdNot(nickname: String?, id: Long?): Boolean
+    fun existsByNicknameAndIdNot(
+        nickname: String?,
+        id: Long?,
+    ): Boolean
 
     fun findByEmail(email: String?): Optional<Member>
 }

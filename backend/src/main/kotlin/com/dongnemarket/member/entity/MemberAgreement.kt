@@ -40,7 +40,6 @@ class MemberAgreement private constructor(
     @field:Column(name = "user_agent", length = 500)
     val userAgent: String?,
 ) : BaseTimeEntity() {
-
     @field:Id
     @field:GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null

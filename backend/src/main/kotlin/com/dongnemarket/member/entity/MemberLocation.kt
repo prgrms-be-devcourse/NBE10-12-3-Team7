@@ -42,7 +42,6 @@ class MemberLocation private constructor(
     @field:Column(name = "active", nullable = false)
     val isActive: Boolean,
 ) : BaseTimeEntity() {
-
     @field:Id
     @field:GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null

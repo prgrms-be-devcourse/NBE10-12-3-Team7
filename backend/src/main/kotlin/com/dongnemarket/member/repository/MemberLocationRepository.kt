@@ -8,7 +8,6 @@ import org.springframework.data.repository.query.Param
 
 /** 파라미터 nullability 규칙은 [MemberRepository] 와 동일하다(원본 boxed `Long` 계약 유지). */
 interface MemberLocationRepository : JpaRepository<MemberLocation, Long> {
-
     fun findAllByMemberIdOrderBySortOrderAsc(memberId: Long?): List<MemberLocation>
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
