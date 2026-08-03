@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.Date
+import java.util.UUID
 import javax.crypto.SecretKey
 
 /**
@@ -63,12 +64,19 @@ class JwtTokenProvider(
             .compact()
     }
 
-    /** 로그인 성공 시 호출: memberId(subject)만 담아 리프레시 토큰 발급. nullability 는 [createAccessToken] 참고. */
+    /**
+     * 로그인 성공 시 호출: memberId(subject)만 담아 리프레시 토큰 발급. nullability 는 [createAccessToken] 참고.
+     *
+     * `jti`(UUID)를 넣는 이유 — 나머지 클레임(sub/type/iat/exp)은 초 단위라, 같은 회원이 같은 초에
+     * 재발급하면 이전과 동일한 토큰이 나와 회전(rotation)의 "구 토큰 재사용 거부"가 무력화된다.
+     * 재사용 판정은 저장소의 문자열 비교(RefreshToken.matches)이므로 jti 를 별도로 읽는 코드는 없다.
+     */
     fun createRefreshToken(memberId: Long?): String {
         val now = Date()
         val expiry = Date(now.time + refreshTokenValidityMillis)
         return Jwts
             .builder()
+            .id(UUID.randomUUID().toString())
             .subject(memberId.toString())
             .claim(CLAIM_TYPE, TOKEN_TYPE_REFRESH)
             .issuedAt(now)
