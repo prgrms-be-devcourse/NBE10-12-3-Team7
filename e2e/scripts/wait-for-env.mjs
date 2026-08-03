@@ -37,6 +37,13 @@ const targets = [
     check: () => true,
     hint: 'docker compose -f docker-compose.e2e.yml logs mailpit --tail 30',
   },
+  {
+    // 시더는 health 가 UP 된 뒤에 돈다 — 그 2초를 안 기다리면 지역이 0건이다.
+    name: '마스터 데이터',
+    url: `${BACKEND}/api/regions`,
+    check: async (res) => (await res.json()).data?.length > 0,
+    hint: 'docker compose -f docker-compose.e2e.yml logs backend --tail 50 | grep Seed',
+  },
 ];
 
 if (process.argv.includes('--ui')) {
