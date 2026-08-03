@@ -171,7 +171,7 @@ class AuthServiceTest {
         val captor: ArgumentCaptor<MemberAgreement> = ArgumentCaptor.forClass(MemberAgreement::class.java)
         verify(memberAgreementRepository, times(2)).save(captor.capture())
         assertThat(captor.allValues)
-            .extracting<AgreementType>(MemberAgreement::getAgreementType)
+            .extracting<AgreementType>(MemberAgreement::agreementType)
             .containsExactlyInAnyOrder(AgreementType.TERMS_OF_SERVICE, AgreementType.PERSONAL_INFO_COLLECTION)
         assertThat(captor.allValues)
             .allSatisfy { agreement ->
@@ -286,7 +286,7 @@ class AuthServiceTest {
     @DisplayName("올바른 이메일·비밀번호로 로그인하면 memberId가 담긴 accessToken·refreshToken을 반환한다")
     fun login_success() {
         val request = LoginRequest("test@example.com", "password123")
-        val member = Member.createUser(request.email, passwordEncoder.encode(request.password), "tester")
+        val member = Member.createUser(request.email!!, passwordEncoder.encode(request.password), "tester")
         ReflectionTestUtils.setField(member, "id", 1L)
         given(memberRepository.findByEmail(request.email)).willReturn(Optional.of(member))
 
@@ -303,7 +303,7 @@ class AuthServiceTest {
     @DisplayName("이미 Refresh Token이 저장된 회원이 재로그인하면 새 토큰으로 저장소에 다시 save()한다")
     fun login_existingRefreshToken_savesNewToken() {
         val request = LoginRequest("test@example.com", "password123")
-        val member = Member.createUser(request.email, passwordEncoder.encode(request.password), "tester")
+        val member = Member.createUser(request.email!!, passwordEncoder.encode(request.password), "tester")
         ReflectionTestUtils.setField(member, "id", 1L)
         given(memberRepository.findByEmail(request.email)).willReturn(Optional.of(member))
 
@@ -457,7 +457,7 @@ class AuthServiceTest {
     @DisplayName("로그아웃 이후 기존 Refresh Token으로 재발급을 시도하면 REFRESH_TOKEN_NOT_FOUND 예외가 발생한다")
     fun reissue_afterLogout_throwsRefreshTokenNotFound() {
         val request = LoginRequest("test@example.com", "password123")
-        val member = Member.createUser(request.email, passwordEncoder.encode(request.password), "tester")
+        val member = Member.createUser(request.email!!, passwordEncoder.encode(request.password), "tester")
         ReflectionTestUtils.setField(member, "id", 1L)
         given(memberRepository.findByEmail(request.email)).willReturn(Optional.of(member))
         // 로그인 시점에는 저장된 row가 없어 신규 저장되고, 로그아웃(삭제) 이후 재발급 시점에도 row가 없는 상태를 그대로 재현한다.
@@ -488,7 +488,7 @@ class AuthServiceTest {
     @DisplayName("비밀번호가 일치하지 않으면 INVALID_PASSWORD 예외가 발생한다")
     fun login_wrongPassword_throwsException() {
         val request = LoginRequest("test@example.com", "wrongPassword")
-        val member = Member.createUser(request.email, passwordEncoder.encode("password123"), "tester")
+        val member = Member.createUser(request.email!!, passwordEncoder.encode("password123"), "tester")
         given(memberRepository.findByEmail(request.email)).willReturn(Optional.of(member))
 
         assertThatThrownBy { authService.login(request) }
@@ -500,7 +500,7 @@ class AuthServiceTest {
     @DisplayName("소셜 로그인 전용 회원이 비밀번호 로그인을 시도하면 존재하지 않는 이메일과 동일하게 MEMBER_NOT_FOUND 예외가 발생한다(INVALID_PASSWORD로 새지 않음)")
     fun login_socialOnlyAccount_throwsMemberNotFoundLikeUnknownEmail() {
         val request = LoginRequest("social@example.com", "anyPassword123!")
-        val member = Member.createSocialUser(request.email, "dummy-encoded-hash", "kakao_loginguard1")
+        val member = Member.createSocialUser(request.email!!, "dummy-encoded-hash", "kakao_loginguard1")
         given(memberRepository.findByEmail(request.email)).willReturn(Optional.of(member))
 
         assertThatThrownBy { authService.login(request) }
@@ -512,7 +512,7 @@ class AuthServiceTest {
     @DisplayName("탈퇴한 회원이 로그인하면 DELETED_MEMBER 예외가 발생한다")
     fun login_deletedMember_throwsException() {
         val request = LoginRequest("deleted@example.com", "password123")
-        val member = Member.createUser(request.email, passwordEncoder.encode(request.password), "tester")
+        val member = Member.createUser(request.email!!, passwordEncoder.encode(request.password), "tester")
         member.changeStatus(MemberStatus.DELETED)
         given(memberRepository.findByEmail(request.email)).willReturn(Optional.of(member))
 
@@ -525,7 +525,7 @@ class AuthServiceTest {
     @DisplayName("정지된 회원이 로그인하면 SUSPENDED_MEMBER 예외가 발생한다")
     fun login_suspendedMember_throwsException() {
         val request = LoginRequest("suspended@example.com", "password123")
-        val member = Member.createUser(request.email, passwordEncoder.encode(request.password), "tester")
+        val member = Member.createUser(request.email!!, passwordEncoder.encode(request.password), "tester")
         member.changeStatus(MemberStatus.SUSPENDED)
         given(memberRepository.findByEmail(request.email)).willReturn(Optional.of(member))
 
@@ -540,7 +540,7 @@ class AuthServiceTest {
     @DisplayName("비밀번호를 4번 틀려도 아직 차단되지 않고 매번 INVALID_PASSWORD 예외가 발생한다")
     fun login_wrongPasswordFourTimes_stillNotBlocked() {
         val request = LoginRequest("lockout@example.com", "wrongPassword")
-        val member = Member.createUser(request.email, passwordEncoder.encode("password123"), "tester")
+        val member = Member.createUser(request.email!!, passwordEncoder.encode("password123"), "tester")
         given(memberRepository.findByEmail(request.email)).willReturn(Optional.of(member))
 
         repeat(4) {
@@ -554,7 +554,7 @@ class AuthServiceTest {
     @DisplayName("비밀번호를 5번 틀리면 그 다음 로그인 시도는 자격증명 확인 전에 TOO_MANY_LOGIN_ATTEMPTS 예외가 발생한다")
     fun login_wrongPasswordFiveTimes_thenBlocksNextAttempt() {
         val request = LoginRequest("lockout2@example.com", "wrongPassword")
-        val member = Member.createUser(request.email, passwordEncoder.encode("password123"), "tester")
+        val member = Member.createUser(request.email!!, passwordEncoder.encode("password123"), "tester")
         given(memberRepository.findByEmail(request.email)).willReturn(Optional.of(member))
 
         repeat(5) {
