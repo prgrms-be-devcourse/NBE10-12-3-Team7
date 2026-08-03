@@ -203,6 +203,34 @@ class MemberLocationControllerTest {
     }
 
     @Test
+    fun `regionCode 원소가 빈 문자열이면 400과 INVALID_INPUT_VALUE를 반환한다`() {
+        val token = getAccessToken("locations-empty-str@example.com", "password123!", "locEmptyStrUser")
+
+        mockMvc
+            .perform(
+                put("/api/members/me/locations")
+                    .header("Authorization", "Bearer $token")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"regionCodes\":[\"\"]}"),
+            ).andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("INVALID_INPUT_VALUE"))
+    }
+
+    @Test
+    fun `정상 코드와 공백 원소가 섞인 목록이면 400과 INVALID_INPUT_VALUE를 반환한다`() {
+        val token = getAccessToken("locations-mixed@example.com", "password123!", "locMixedUser")
+
+        mockMvc
+            .perform(
+                put("/api/members/me/locations")
+                    .header("Authorization", "Bearer $token")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"regionCodes\":[\"1168010100\",\" \"]}"),
+            ).andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("INVALID_INPUT_VALUE"))
+    }
+
+    @Test
     fun `리스트 안에 중복 regionCode가 있으면 400과 INVALID_INPUT_VALUE를 반환한다`() {
         val token = getAccessToken("locations-duplicate@example.com", "password123!", "locDuplicateUser")
 
