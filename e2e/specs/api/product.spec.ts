@@ -158,6 +158,12 @@ test.describe('상품 — 거래 상태 전이', () => {
       );
       expect(found.map((p) => p.productId)).toContain(product.productId);
 
+      const byCategory = await unwrap<ProductSummary[]>(
+        await user.api.get(`/api/categories/${product.categoryId}/products`),
+        200,
+      );
+      expect(byCategory.map((p) => p.productId)).toContain(product.productId);
+
       const detail = await unwrap<ProductResponse>(
         await user.api.get(`/api/products/${product.productId}`),
         200,
@@ -185,8 +191,9 @@ test.describe('상품 — 거래 상태 전이', () => {
       );
     });
 
-    await test.step('완료 상품은 목록과 검색에서 동시에 빠진다', async () => {
-      // ProductSpecification.notCompleted() 가 목록·검색·카테고리 세 경로에 함께 걸려 있다.
+    await test.step('완료 상품은 목록·검색·카테고리별 목록에서 동시에 빠진다', async () => {
+      // ProductSpecification.notCompleted() 가 세 경로에 함께 걸려 있다. 하나만 확인하면
+      // 나머지 두 경로가 어긋나도 통과한다.
       expect(await listContains(user.api, product.productId), '완료인데 목록에 남아 있다').toBe(false);
 
       const found = await unwrap<ProductSummary[]>(
@@ -194,6 +201,12 @@ test.describe('상품 — 거래 상태 전이', () => {
         200,
       );
       expect(found.map((p) => p.productId)).not.toContain(product.productId);
+
+      const byCategory = await unwrap<ProductSummary[]>(
+        await user.api.get(`/api/categories/${product.categoryId}/products`),
+        200,
+      );
+      expect(byCategory.map((p) => p.productId)).not.toContain(product.productId);
     });
 
     await test.step('내 상품 목록에는 남는다', async () => {
