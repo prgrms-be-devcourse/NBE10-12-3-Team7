@@ -1658,3 +1658,82 @@ Mockito 매처의 Kotlin non-null 파라미터 충돌은 6단계와 같은 typed
 - Spring context 기동·controller bean 3개·mapping 12개 등록은 실제 context 테스트로,
   포트 bind 는 기존 `ChatWebSocketTest`(RANDOM_PORT) 통과로 확인
 - 외부 OAuth provider·SMTP·운영 credential 미사용 (테스트 값 전부 명백한 더미)
+
+---
+
+# PR H — Java 테스트 전환 (회귀 안전망 세대교체)
+
+브랜치 `feature/auth_kotlin_tests` / 기준 PR G(`feature/auth_kotlin_controller`) HEAD.
+main 은 PR G 로 auth Java 0개가 됐지만, 1~7단계 내내 **회귀 안전망 역할이라 의도적으로 Java 로
+남겨둔 기존 테스트 23개**가 마지막 잔여였다. 그중 22개(약 4,100줄)를 전환했다.
+
+## 제외 1개 — `AuthKotlinInteropCompatibilityTest` 는 Java 로 남긴다
+
+이 테스트의 검증 수단은 **"Java 소스에서 그 호출이 컴파일된다"는 사실 자체**다
+(record 접근자 이름 유지, `isXxx()` getter 유지 등 — PR A 절 참고). Kotlin 으로 옮기는 순간
+검증 대상이 사라진다. 도메인 내 유일한 의도적 Java 잔존이며, 파일 상단 주석에 사유를 남겼다.
+
+## 원칙 — main 전환과 무엇이 다른가
+
+테스트는 공개 API 가 아니므로 `javap` 표면 비교가 성립하지 않는다. 대신 게이트를 이렇게 정했다.
+
+1. **1:1 전환**: 테스트 메서드명·`@DisplayName`·한국어 주석·구획 주석·검증 값 전부 보존.
+   이름 백틱화·구조 개선·단언 강화 금지(안전망을 바꾸면서 안전망을 믿을 수는 없다).
+2. **클래스별 테스트 수 baseline 대조**: 전환 전 XML 리포트에서 auth 전 클래스의 (클래스, 테스트 수)를
+   떠 두고, 전환 후 동일 방식으로 재추출해 diff. 총합만 보면 "한 클래스에서 빠지고 다른 클래스에서
+   늘어난" 종류의 손실을 놓친다.
+3. `@Tag("integration")`·`@Disabled`(사유 문자열 포함) 등 어노테이션 바이트 단위 보존 —
+   `integrationTest` 태스크가 태그로 선별하므로 태그 손실은 **조용한 테스트 누락**이 된다.
+
+## 실제 발견 문제 — 컴파일에서 잡힌 3종 4건
+
+| 위치 | 문제 | 처리 |
+|---|---|---|
+| `AuthControllerTest` | `response.getCookie()` 가 `Cookie?` — Java 는 단언 후 바로 접근 가능했다 | 직전 `isNotNull()` 단언이 있으므로 `!!` (동작 동일) |
+| `RedisEmailVerificationCode`·`RedisPasswordResetToken` RepositoryTest | `.get().satisfies { }` 의 SAM+vararg 오버로드를 Kotlin 이 추론하지 못함 | 단일 오버로드 `hasValueSatisfying` 으로 — 빈 Optional 실패 의미 동일 |
+| `AuthServiceTest` | `.extracting(메서드참조)` 가 vararg(`Tuple`) 오버로드로 풀려 타입 불일치 | 명시적 제네릭 `.extracting<AgreementType>(...)` 으로 단일 Function 오버로드 강제 |
+
+## 실제 발견 문제 — 런타임 연쇄 실패 🔴 (문서화된 함정을 그대로 밟았다)
+
+`PasswordResetControllerTest` 4건이 한꺼번에 깨졌다.
+
+```
+java.lang.NullPointerException: cap(...) must not be null
+  → InvalidUseOfMatchersException / TooManyActualInvocations (2차 오류)
+```
+
+원인: `val bodyCaptor = ArgumentCaptor.forClass(String::class.java)` — **명시적 Kotlin 타입 없이**
+선언해 `forClass` 의 platform 제네릭이 `cap<T>` 추론을 오염시켰고, non-null `EmailSender.send(String)`
+자리에서 호출부 `checkNotNullExpressionValue` 가 터졌다. NPE 가 매처 스택을 오염시켜 무관해 보이는
+3건(`TooManyActualInvocations` 포함)이 연쇄로 깨지는, 6단계 기록과 동일한 실패 형태다.
+
+이건 **6단계 「테스트 작성 관행」절이 이미 경고한 함정**이다 — "captor 변수의 명시적 Kotlin 타입 선언"
+한 줄을 빠뜨리면 컴파일은 통과하고 런타임에만 죽는다는 것을 재확인했다.
+수정: `val bodyCaptor: ArgumentCaptor<String> = ...` 한 줄. 4건 전부 복구.
+
+## 파일별 주요 판단 (전부 언어 경계가 강제한 것)
+
+- **Mockito 헬퍼는 필요한 곳에만**: 매처 사용처 전수 감사 결과 대부분의 대상 파라미터가
+  nullable(`String?` 등) 또는 Java 잔존(member)의 platform 타입이라 표준 `any()` 로 충분했다.
+  helper 가 실제 필요한 곳은 non-null `EmailSender.send` 를 verify 하는 2개 파일의 `cap()` 뿐
+  (`PasswordResetControllerTest`·`PasswordResetServiceTest`). 불필요한 파일에 복사하지 않았다(죽은 코드).
+- **BDD 스타일 유지**: `AuthServiceTest` 는 원본이 `BDDMockito.given` 일색이라 그대로 —
+  백틱 `` `when` `` 으로 갈아타지 않았다(1:1 원칙).
+- **Testcontainers static → companion object**: `@Container val` 은 static 필드로 내려가 확장이
+  그대로 찾고, `@DynamicPropertySource` 만 `@JvmStatic` 필요(진짜 static 메서드 요건).
+- **record 접근자 → 프로퍼티**: `identity.provider()` → `identity.provider` 등 —
+  대상이 Kotlin 이 된 데 따른 자연 변환, JVM 상 동일 접근자 호출.
+- **박싱/승격 명시화**: Java 의 암묵 `int→long` 확대는 `.toLong()` 으로, `Long.class` 는
+  `Long::class.javaObjectType` 으로 (`Long::class.java` 는 primitive `long.class` 가 되어 오판).
+- **Java text block → raw string + `trimIndent()`**: text block 이 갖던 말미 개행 1개가 사라진다.
+  JSON 본문·SQL 로만 쓰여 파싱 의미 동일 — 허용 차이로 기록. JSON 페이로드는 바이트 보존을 위해
+  장문 단일행 raw string 을 허용했다(ktlint max-line-length 경고보다 페이로드 보존 우선).
+
+## 검증
+
+- baseline(전환 전): `test` 966/0/0/0 · `integrationTest` 44/실패 0/비활성 1 — XML 리포트에서
+  auth 클래스별 테스트 수 전수 확보
+- 최종: `test` **966**/0/0/0 · `integrationTest` **44**/0/비활성 1(`OAuthEndpointRateLimitOrderTest`,
+  `@Disabled` 사유 문자열까지 보존) — **클래스별 테스트 수 diff 0**
+- 전환 파일 ktlint 위반 0 · compile 전 소스셋 · `bootJar` 성공
+- 남은 auth Java: `AuthKotlinInteropCompatibilityTest` 1개 (위 사유로 의도적 유지)
