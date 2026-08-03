@@ -400,7 +400,7 @@ class ProductRepositoryTest {
         deletedProduct.softDelete()
         productRepository.saveAndFlush(deletedProduct)
 
-        val products = productRepository.findAllByMemberIdAndDeletedAtIsNullOrderByIdDesc(member.id)
+        val products = productRepository.findAllByMemberIdAndDeletedAtIsNullOrderByIdDesc(member.id!!)
 
         assertThat(products).containsExactly(savedHiddenProduct, oldProduct)
     }

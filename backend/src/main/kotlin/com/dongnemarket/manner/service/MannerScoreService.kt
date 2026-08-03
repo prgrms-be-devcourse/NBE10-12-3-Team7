@@ -128,7 +128,7 @@ class MannerScoreService(
      * 아직 레코드가 없는 회원(가입 직후 등)은 기본값(36.5)으로 채워 반환한다 — 정렬 목적이라 조회만으로 새 행을 만들지 않는다.
      */
     fun getScoresByMemberIds(memberIds: Collection<Long>): Map<Long, BigDecimal> {
-        val scores = mannerScoreRepository.findAllByMember_IdIn(memberIds).associateTo(HashMap()) { it.member.id to it.score }
+        val scores = mannerScoreRepository.findAllByMember_IdIn(memberIds).associateTo(HashMap()) { it.member.id!! to it.score }
         memberIds.forEach { scores.putIfAbsent(it, MannerScore.DEFAULT_SCORE) }
         return scores
     }

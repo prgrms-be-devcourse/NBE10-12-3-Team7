@@ -95,7 +95,7 @@ class AuthService(
         }
 
         val encodedPassword = passwordEncoder.encode(request.password)
-        val member = Member.createUser(request.email, encodedPassword, request.nickname)
+        val member = Member.createUser(request.email!!, encodedPassword, request.nickname!!)
 
         return try {
             val savedMember = memberRepository.save(member)

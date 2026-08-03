@@ -54,7 +54,7 @@ class MannerRatingService(
 
         val rating = mannerRatingRepository.save(MannerRating.of(product, rater, ratee, score))
 
-        mannerScoreService.applyRating(ratee.id, score)
+        mannerScoreService.applyRating(ratee.id!!, score)
 
         return MannerRatingResponse.from(rating)
     }

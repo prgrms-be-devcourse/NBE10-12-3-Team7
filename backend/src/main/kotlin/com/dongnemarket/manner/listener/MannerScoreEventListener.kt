@@ -50,7 +50,7 @@ class MannerScoreEventListener(
                 }
             }
             ReportStatus.REJECTED -> {
-                mannerScoreService.applyFalseReportPenalty(report.reporter.id, report.id!!)
+                mannerScoreService.applyFalseReportPenalty(report.reporter.id!!, report.id!!)
             }
             else -> {}
         }

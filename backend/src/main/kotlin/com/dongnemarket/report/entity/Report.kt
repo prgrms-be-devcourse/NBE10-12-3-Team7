@@ -79,7 +79,7 @@ class Report private constructor(
     }
 
     /** 이 신고로 매너온도 등에 영향을 받는 대상 회원의 id. 상품 신고는 상품 소유자, 회원 신고는 대상 회원 본인이다. */
-    fun resolveTargetMemberId(): Long = if (reportType == ReportType.MEMBER) targetMember!!.id else targetProduct!!.member.id
+    fun resolveTargetMemberId(): Long = if (reportType == ReportType.MEMBER) targetMember!!.id!! else targetProduct!!.member.id!!
 
     companion object {
         @JvmStatic

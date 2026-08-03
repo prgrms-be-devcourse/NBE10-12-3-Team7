@@ -39,7 +39,7 @@ class CommentService(
 
         // 상품 소유자에게 댓글 알림(자기 상품에 스스로 단 댓글은 제외). 프록시 id 접근이라 추가 쿼리 없음.
         // 커밋 후(AFTER_COMMIT) 별도 트랜잭션에서 저장되므로 알림 실패가 댓글 작성을 롤백하지 않는다.
-        val recipientId = product.member.id
+        val recipientId = product.member.id!!
         if (recipientId != memberId) {
             eventPublisher.publishEvent(CommentCreatedEvent(recipientId, productId, product.title, memberId))
         }
