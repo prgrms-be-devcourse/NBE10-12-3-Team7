@@ -21,6 +21,14 @@ spring:
     password: ${DB_PASSWORD:dongne1234}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+    # 커넥션 풀(HikariCP). 전까지 전부 기본값 — loadtest/README.md 가 지목한 병목 후보다.
+    # 20은 실측값이 아니라 재측정 출발점이라 env로 뺐다(상한은 MySQL max_connections 151).
+    # timeout 기본 30초는 풀이 마를 때 Tomcat 스레드를 30초씩 묶어 전체 API를 같이 죽인다.
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT:3000}
+      leak-detection-threshold: ${DB_LEAK_DETECTION_THRESHOLD:20000}
+
   # DB 마이그레이션(Flyway). 기본 OFF — dev/test는 ddl-auto가 스키마를 담당한다.
   # prod에서만 켜고(+ ddl-auto: validate) db/migration/V*.sql로 스키마를 버전 관리한다. (ADR 0004 P4)
   flyway:

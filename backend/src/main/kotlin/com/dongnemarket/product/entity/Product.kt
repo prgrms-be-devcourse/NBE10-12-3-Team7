@@ -15,6 +15,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import org.hibernate.annotations.DynamicUpdate
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -29,8 +30,12 @@ import java.time.LocalDateTime
  * 프로퍼티명이 `isHidden` 이어야 하는데, 그러면 컬럼이 `is_hidden` 이 된다.
  * 실제 컬럼은 `hidden`(V1__baseline.sql) 이므로 이름을 명시해 고정한다.
  * 빠뜨리면 테스트(create-drop)는 전부 통과하고 운영(validate)에서만 기동이 실패한다.
+ *
+ * `@DynamicUpdate` 가 없으면 더티체킹이 전 컬럼을 UPDATE 한다 — 상세 조회가 조회수를 올리면서
+ * 그 사이 벌크 update 로 커밋된 `favoriteCount` 를 읽었던 값으로 되돌린다(갱신 유실).
  */
 @Entity
+@DynamicUpdate
 @Table(name = "products")
 class Product private constructor(
     @field:ManyToOne(fetch = FetchType.LAZY)
