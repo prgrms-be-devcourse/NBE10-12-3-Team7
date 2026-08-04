@@ -22,6 +22,7 @@ mobile/app/src/main/java/com/dongnemarket/mobile/
 ├── data/
 │   ├── remote/       Retrofit API 인터페이스 · DTO
 │   ├── local/        로컬 저장 (토큰 등)
+│   ├── image/        사진 리사이즈·JPEG 압축·EXIF 회전 (업로드 전처리)
 │   ├── mapper/       DTO ↔ 도메인 모델 변환
 │   └── repository/   Repository 구현
 ├── domain/
@@ -29,7 +30,7 @@ mobile/app/src/main/java/com/dongnemarket/mobile/
 │   └── repository/   Repository 인터페이스 (data가 구현)
 ├── di/               Hilt 모듈
 └── ui/
-    ├── login/ home/ productdetail/ chat/    화면별 Composable + ViewModel
+    ├── login/ home/ productdetail/ chat/ productcreate/    화면별 Composable + ViewModel
     ├── component/    공용 컴포넌트
     ├── navigation/   화면 이동
     └── theme/        테마
@@ -37,14 +38,37 @@ mobile/app/src/main/java/com/dongnemarket/mobile/
 
 의존 방향은 **`ui → domain ← data`** 다. `ui`는 `domain`의 인터페이스만 알고 `data` 구현을 모른다.
 
-## 화면 (Phase 1)
+## 화면
 
 | 화면 | 내용 |
 |---|---|
 | `login` | 로그인 |
-| `home` | 상품 목록 |
+| `home` | 상품 목록 (+ 글쓰기 FAB) |
 | `productdetail` | 상품 상세 |
 | `chat` | 채팅 목록 · 채팅방 |
+| `productcreate` | **상품 등록** |
+
+## 상품 등록 — 2단계 요청
+
+서버에 "이미지까지 한 번에" 받는 엔드포인트가 없어 요청이 갈라진다.
+
+```
+POST /api/products/images   장당 1회, multipart @RequestPart("files")  → 경로 수집
+POST /api/products          그 경로들을 imageUrls 에 실어 전송
+```
+
+`ProductRepository.createProduct()` 가 이 순서를 감춘다 — 화면은 호출 하나만 안다.
+
+**장당 1회로 나눠 보내는 이유**: 서버의 `max-request-size` 가 `max-file-size` 와 똑같이 5MB 라
+여러 장을 한 요청에 담으면 파일 검증에 닿기도 전에 요청이 잘린다.
+업로드 전에 `ImageCompressor` 가 긴 변 1440px · JPEG 로 굽고 EXIF 회전도 픽셀에 적용한다.
+
+**지역**: `regionCode` 는 읍면동(level 3)만 받는다. 내 동네 설정도 서버가 같은 제약을 걸어서
+`GET /api/members/me/locations` 결과를 그대로 쓴다(변환·재검증 불필요).
+동네 미설정 계정은 등록할 수 없어 안내 화면을 띄운다 — **동네 설정 화면은 아직 없다.**
+
+> ⚠️ 서버가 `description` 을 검증 없이 역참조한다(`request.description!!`) → null 이면 **500**.
+> 앱은 미입력이어도 빈 문자열을 보낸다. `explicitNulls = false` 라 null 이면 키가 통째로 빠지기 때문이다.
 
 ## 지역(region) 표현
 
@@ -91,4 +115,4 @@ debug 빌드는 `http://10.0.2.2:8080` (에뮬레이터가 보는 PC의 localhos
 
 - API 스펙의 정본은 백엔드 **Swagger**다. DTO를 손으로 작성하므로 백엔드 변경 시 어긋날 수 있다.
 - 화면·계층이 추가되면 이 문서의 구조를 **같은 PR에서** 갱신한다.
-- 현재 백엔드 API **81개 중 18개(22%)** 만 소비한다. 상품 등록·회원가입·찜목록·내정보·알림·에스크로·경매는 미구현이다.
+- 현재 백엔드 API **81개 중 20개(25%)** 만 소비한다. 회원가입·찜목록·내정보·상품수정/삭제·동네설정·알림·에스크로·경매는 미구현이다.
