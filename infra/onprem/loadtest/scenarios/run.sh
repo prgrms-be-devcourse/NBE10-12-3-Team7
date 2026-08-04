@@ -85,6 +85,7 @@ if [ "$STACK_HERE" = 1 ]; then
     echo "| 앱 이미지 | \`$(q docker inspect dongne-app --format '{{.Config.Image}}')\` — 빌드 ${img} |"
     echo "| 요청 제한 | $(q docker exec dongne-app env | grep -E '^RATE_LIMIT' | paste -sd' ' - ) |"
     echo "| 토큰 수명 | $(q docker exec dongne-app env | grep -E '^JWT_ACCESS_TTL' | paste -sd' ' - ) |"
+    echo "| DB 커넥션 풀 | 상한 $(curl -s 'http://localhost:9090/api/v1/query?query=hikaricp_connections_max' 2>/dev/null | sed -n 's/.*"value":\[[0-9.]*,"\([0-9]*\)".*/\1/p' || echo '확인 불가') |"
     echo "| 데이터 | \`[load]\` 상품 $(mysql_q "select count(*) from products where title like '[load]%';") · 회원 $(mysql_q 'select count(*) from members;') · 댓글 $(mysql_q 'select count(*) from comments;') |"
     echo "| MySQL buffer pool | $(mysql_q 'select @@innodb_buffer_pool_size;') bytes |"
     echo "| VM 자원 | CPU $(q docker info --format '{{.NCPU}}') · 메모리 $(q docker info --format '{{.MemTotal}}') bytes |"

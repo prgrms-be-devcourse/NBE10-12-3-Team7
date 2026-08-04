@@ -150,6 +150,13 @@ services:
       # 이번에 재려는 것이 아니므로 회차 동안만 크게 준다(조건은 conditions.md 에 남는다).
       #   JWT_ACCESS_TTL=3600 docker compose --env-file .env up -d app
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
+      # DB 커넥션 풀 상한. application.yml 에 hikari 설정이 없어 **HikariCP 기본값 10** 이
+      # 쓰이고 있었고, 부하테스트 2회차에서 동네 필터 경로의 무릎(초당 200~230 진입)이
+      # 이 풀의 고갈에서 왔다(pending 0→187, active 10 고정, 그때 VM CPU 는 57%).
+      # 코드가 아니라 기본값이라 env 로 덮을 수 있다 — 앱 이미지를 다시 빌드하지 않아도 되므로
+      # 회차 간 "같은 이미지" 조건이 유지된다.
+      #   DB_POOL_MAX=20 docker compose --env-file .env up -d app
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${DB_POOL_MAX:-10}
       # 인증 관련 TTL 데이터 저장소(같은 스택의 redis 컨테이너)
       REDIS_HOST: redis
       REDIS_PORT: 6379
