@@ -10,8 +10,13 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -23,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dongnemarket.mobile.domain.model.Category
 import com.dongnemarket.mobile.domain.model.Product
@@ -45,6 +51,7 @@ internal const val TAG_SEARCH = "home_search"
 internal const val TAG_CATEGORY_CHIPS = "home_category_chips"
 internal const val TAG_PRODUCT_GRID = "home_product_grid"
 internal const val TAG_PRODUCT_CARD = "home_product_card"
+internal const val TAG_CREATE_FAB = "home_create_fab"
 
 /** 그리드 끝에서 몇 칸 남았을 때 다음 페이지를 미리 부를지. 스크롤이 멈추기 전에 도착하게 하는 여유분. */
 private const val LOAD_MORE_THRESHOLD = 4
@@ -57,20 +64,31 @@ private const val LOAD_MORE_THRESHOLD = 4
  *
  * @param onProductClick 상품 카드를 눌렀다 — 상세로 이동해 달라(인자는 `productId`).
  * @param onChatTabClick 하단 채팅 탭을 눌렀다 — 채팅 목록으로 이동해 달라.
+ * @param onCreateClick 등록 FAB 을 눌렀다 — 상품 등록 화면으로 이동해 달라.
  */
 @Composable
 fun HomeScreen(
     onProductClick: (Long) -> Unit,
     onChatTabClick: () -> Unit,
+    onCreateClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // 상세·등록에서 돌아오면 목록을 다시 받는다.
+    // 이게 없으면 방금 등록한 상품이 홈에 나타나지 않아 "등록이 안 됐다"고 보인다.
+    // ON_RESUME 인 이유: 화면이 실제로 사용자 앞에 놓인 순간이며, 다른 앱에 갔다 돌아온 경우도 함께 덮는다.
+    LifecycleResumeEffect(Unit) {
+        viewModel.onScreenResumed()
+        onPauseOrDispose { }
+    }
+
     HomeContent(
         state = uiState,
         onProductClick = onProductClick,
         onChatTabClick = onChatTabClick,
+        onCreateClick = onCreateClick,
         onSearch = viewModel::onSearch,
         onCategorySelect = viewModel::onCategorySelect,
         onLoadMore = viewModel::onLoadMore,
@@ -83,15 +101,16 @@ fun HomeScreen(
  * ViewModel 없이 상태만 받아 그리는 본체. [HomeScreen] 이 얇은 껍데기인 이유가 이것이다 —
  * `@Preview` 와 UI 테스트가 Hilt·네트워크 없이 화면을 검수할 수 있다.
  *
- * ⚠️ **상품 등록 FAB 이 없다.** Phase 1 에 등록 화면이 없어서 누르면 아무 일도 안 나는 버튼이 되고,
- * 그건 사용자가 앱이 고장 났다고 느끼는 가장 빠른 길이다. 등록 화면이 생기면 여기 Scaffold 에
- * `floatingActionButton` 을 붙이면 된다.
+ * 상품 등록 FAB 은 **목록이 정상으로 그려질 때만** 띄운다.
+ * 로딩·에러 화면에 떠 있으면 "지금 뭘 눌러야 하는지"가 흐려지고,
+ * 목록조차 못 불러온 상태라면 등록에 필요한 카테고리·내 동네도 못 받을 가능성이 높다.
  */
 @Composable
 fun HomeContent(
     state: HomeUiState,
     onProductClick: (Long) -> Unit,
     onChatTabClick: () -> Unit,
+    onCreateClick: () -> Unit,
     onSearch: (String) -> Unit,
     onCategorySelect: (Long?) -> Unit,
     onLoadMore: () -> Unit,
@@ -102,6 +121,17 @@ fun HomeContent(
         modifier = modifier,
         // 본문은 흰 바탕, 히어로만 크림색으로 띄운다(테마 기본 배경이 크림이라 명시적으로 지정).
         containerColor = MaterialTheme.colorScheme.surface,
+        floatingActionButton = {
+            if (state is HomeUiState.Success) {
+                ExtendedFloatingActionButton(
+                    onClick = onCreateClick,
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    // 아이콘만 있는 FAB 은 "＋가 뭘 더한다는 거지?"가 되기 쉽다 → 글자를 함께 둔다.
+                    text = { Text("글쓰기") },
+                    modifier = Modifier.testTag(TAG_CREATE_FAB),
+                )
+            }
+        },
         bottomBar = {
             MarketOnBottomBar(
                 selected = MarketOnTab.HOME,
@@ -253,6 +283,7 @@ private fun HomeContentPreview() {
             state = previewSuccess(),
             onProductClick = {},
             onChatTabClick = {},
+            onCreateClick = {},
             onSearch = {},
             onCategorySelect = {},
             onLoadMore = {},
@@ -269,6 +300,7 @@ private fun HomeContentNoRegionPreview() {
             state = previewSuccess().copy(region = null, categories = emptyList()),
             onProductClick = {},
             onChatTabClick = {},
+            onCreateClick = {},
             onSearch = {},
             onCategorySelect = {},
             onLoadMore = {},
@@ -285,6 +317,7 @@ private fun HomeContentEmptyPreview() {
             state = previewSuccess().copy(products = emptyList(), keyword = "냉장고"),
             onProductClick = {},
             onChatTabClick = {},
+            onCreateClick = {},
             onSearch = {},
             onCategorySelect = {},
             onLoadMore = {},
@@ -301,6 +334,7 @@ private fun HomeContentLoadingPreview() {
             state = HomeUiState.Loading,
             onProductClick = {},
             onChatTabClick = {},
+            onCreateClick = {},
             onSearch = {},
             onCategorySelect = {},
             onLoadMore = {},
@@ -317,6 +351,7 @@ private fun HomeContentErrorPreview() {
             state = HomeUiState.Error("네트워크 연결을 확인해 주세요."),
             onProductClick = {},
             onChatTabClick = {},
+            onCreateClick = {},
             onSearch = {},
             onCategorySelect = {},
             onLoadMore = {},

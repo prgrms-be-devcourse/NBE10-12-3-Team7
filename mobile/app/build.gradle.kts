@@ -82,6 +82,7 @@ dependencies {
 
     // 이미지
     implementation(libs.coil.compose)
+    implementation(libs.androidx.exifinterface)
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)

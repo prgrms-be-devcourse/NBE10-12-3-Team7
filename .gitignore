@@ -29,3 +29,6 @@ application-secret.yml
 .mcp.json
 .serena/
 .claude/
+
+# Kotlin 컴파일러 데몬 세션 파일(빌드 산출물)
+.kotlin/
