@@ -19,6 +19,12 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
+  # nginx 웹 진입 계층. 부하 계단이 30초 단위라 앱과 같은 5초 간격으로 좁힌다.
+  - job_name: 'nginx'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+
   # 컨테이너별 자원 — 대시보드 2행
   - job_name: 'cadvisor'
     static_configs:
