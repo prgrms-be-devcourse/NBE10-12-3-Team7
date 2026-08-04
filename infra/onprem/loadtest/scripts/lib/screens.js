@@ -93,6 +93,25 @@ export function screenProductDetail(productId) {
 }
 
 /**
+ * 트래픽 상한 측정용 최소 프로브 — 화면이 아니라 **합성 부하다.**
+ *
+ * s01~s02 는 사람이 보는 화면을 재현했지만 이건 사용자 여정이 아니다. 목적은 하나:
+ * **응답을 가능한 작게 만들어(size=1 → 449B) Wi-Fi 대역폭 벽을 앱 한계 위로 밀어올린 뒤,
+ * 네트워크가 아니라 앱(nginx·Tomcat·커넥션풀)이 먼저 무너지는 지점을 보는 것.**
+ * size=30(9.6KB)은 이 Wi-Fi(1.91MB/s)에서 초당 198건이 대역폭 상한이라 앱 무릎(200~230)과
+ * 겹쳐 분리할 수 없었다(2026-08-04 노트북 iperf3 실측). size=1 은 상한이 초당 4,259건이라
+ * 앱이 먼저 걸린다.
+ *
+ * categories(334B) 대신 products?size=1 을 쓰는 이유: categories 는 캐시로 nginx 만 재게
+ * 될 수 있지만, size=1 은 LIMIT 1 이라도 **DB 조회가 있어 커넥션 풀(유력 병목)을 지난다.**
+ */
+export function probeProductsMin() {
+  const res = http.get(`${BASE_URL}/api/products?size=1`, { tags: { name: 'products_min' } });
+  expectOk(res, 'products_min');
+  return res;
+}
+
+/**
  * 상품 등록 요청 본문. 화면이 아니라 **행동(action)** 이라 screen* 이 아닌 이름을 쓴다.
  *
  * 마커 `[load-write]` 로 시작한다 — 회차 후 정리(`setup/unload-write.sh`)가 이걸로 지운다.

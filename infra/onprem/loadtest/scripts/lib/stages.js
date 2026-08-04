@@ -100,6 +100,43 @@ export const ARRIVAL_LADDER = [
   { duration: '30s', target: 0 },
 ];
 
+// ── 처리량 상한 계단 ────────────────────────────────────────────────────────
+//
+// **단위가 다르다 — 초당 "요청"이다.** s01 은 화면 진입 1회에 API 2건(categories+products)이
+// 나갔지만, s03 은 프로브 1건이 요청 1건이라 target 이 곧 초당 요청 수다.
+//
+// 훨씬 높이(3000) 올리는 이유: 응답이 449B 라 대역폭 상한이 초당 4,259건이고, 앱의 가벼운-조회
+// 상한(커넥션풀 10 × size=1 조회 ~5ms ≈ 초당 2,000)이 그 아래라, 네트워크가 벽이 되기 전에
+// 앱 무릎을 볼 수 있다. 무릎을 확실히 넘으면 config 의 abortOnFail(10배)이 자동 중단하므로
+// 3000 까지 다 돌지 않는 경우가 많다.
+//
+// 계단 근거: 유력 병목이 커넥션 풀 10개라 무릎을 초당 2000 근처로 보고, 1500·2000·2500 을
+// 그 주변에 촘촘히 둔다. 각 단계 2분 유지 + 30초 램프업 → 무릎까지 최대 약 18분.
+export const THROUGHPUT_LADDER = [
+  { duration: '30s', target: 250 },
+  { duration: '2m', target: 250 },
+  { duration: '30s', target: 500 },
+  { duration: '2m', target: 500 },
+  { duration: '30s', target: 1000 },
+  { duration: '2m', target: 1000 },
+  { duration: '30s', target: 1500 },
+  { duration: '2m', target: 1500 },
+  { duration: '30s', target: 2000 },
+  { duration: '2m', target: 2000 },
+  { duration: '30s', target: 2500 },
+  { duration: '2m', target: 2500 },
+  { duration: '30s', target: 3000 },
+  { duration: '2m', target: 3000 },
+  { duration: '30s', target: 0 },
+];
+
+/** 처리량 계단 선택. 읽기의 pickArrivalStages() 와 같은 규칙이다. */
+export function pickThroughputStages() {
+  if (__ENV.SMOKE === 'true') return ARRIVAL_SMOKE;
+  if (__ENV.SOAK_RATE) return arrivalSoak(Number(__ENV.SOAK_RATE));
+  return THROUGHPUT_LADDER;
+}
+
 // ── 쓰기 계단 ──────────────────────────────────────────────────────────────
 //
 // 도착률은 읽기와 같은 값(20~600)이지만 **유지 시간이 1분이다**(읽기는 2분).
