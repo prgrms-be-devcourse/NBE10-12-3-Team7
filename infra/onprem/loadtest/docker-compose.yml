@@ -23,8 +23,41 @@ services:
       # 맥의 Prometheus 는 --web.enable-remote-write-receiver 가 켜져 있다.
       K6_PROMETHEUS_RW_SERVER_URL: ${K6_PROMETHEUS_RW_SERVER_URL:-}
 
-      # k6 는 기본으로 p99 만 보낸다. 기존 Grafana 대시보드가 p95 를 쓰므로 함께 보낸다.
+      # 트렌드 지표를 네이티브 히스토그램으로 보낸다. **계단별 판정에 필수다.**
+      # 기본(false)이면 k6 는 p95 를 테스트 시작부터 누적한 게이지로 보내서, 부하가 올라가도
+      # 값이 단조 감소한다 — 1회차에서 배수 p95 가 2.57 → 1.17 로 계속 내려갔고 마지막 값이
+      # 요약의 전체 합산값과 정확히 같았다. 그 상태로는 무릎이 어느 계단인지 읽을 수 없다.
+      # 받는 쪽(Prometheus)도 --enable-feature=native-histograms 가 켜져 있어야 한다.
+      K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM: ${K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM:-true}
+
+      # 위를 false 로 되돌릴 때만 쓰인다(누적 게이지 방식). 회차 비교용으로 남겨둔다.
       K6_PROMETHEUS_RW_TREND_STATS: ${K6_PROMETHEUS_RW_TREND_STATS:-p(95),p(99),avg,max}
 
       # 실행을 구분하는 꼬리표. Grafana 에서 회차를 나눠 보려면 매번 다르게 준다.
       K6_TAGS: ${K6_TAGS:-}
+
+      # 시나리오 스위치. **여기 적어야 컨테이너에 도달한다** — `docker compose run` 은 셸의
+      # 환경변수를 자동으로 넘기지 않는다. 이 줄들이 없으면 `SMOKE=true docker compose run ...`
+      # 이 조용히 무시되고 항상 기본 계단(15분)이 돈다. 실측으로 확인한 함정이다.
+      # 값을 주지 않으면 빈 문자열이 되고, 스크립트에서는 모두 falsy 라 기본값으로 떨어진다.
+      #
+      # ⚠️ `k6 inspect` 로는 이게 먹었는지 확인할 수 없다 — inspect 는 __ENV 를 채우지 않아
+      # 항상 기본 계단을 보여준다. 확인하려면 `k6 run` 으로 돌려야 한다.
+      REGION_CODE: ${REGION_CODE:-}
+      LOGIN: ${LOGIN:-}
+      LOGIN_ACCOUNTS: ${LOGIN_ACCOUNTS:-}
+      # 시드 계정 비밀번호. **코드에 적지 않는다** — 이 리포는 public 이고, 시드 계정은
+      # 관리자 계정 해시를 복사해 만들어져서 적는 순간 기존 노출을 한 번 더 늘린다.
+      LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}
+      ABORT_RATIO: ${ABORT_RATIO:-}
+      CEILING: ${CEILING:-}
+      SMOKE: ${SMOKE:-}
+      SOAK_VU: ${SOAK_VU:-}
+      SOAK_RATE: ${SOAK_RATE:-}
+      PRE_VUS: ${PRE_VUS:-}
+      MAX_VUS: ${MAX_VUS:-}
+      ALLOWED_RATIO: ${ALLOWED_RATIO:-}
+      TARGET_RPS: ${TARGET_RPS:-}
+      DURATION: ${DURATION:-}
+      THINK_MIN: ${THINK_MIN:-}
+      THINK_MAX: ${THINK_MAX:-}

@@ -1,14 +1,14 @@
 {
   "uid": "onprem-overview",
   "title": "온프레미스 종합 — 앱 · 컨테이너 · DB · 하드웨어",
-  "description": "위에서 아래로 훑으며 확인한다. ① 서비스가 건강한가 → ② 컨테이너가 자원에 눌렸나 → ③ DB가 병목인가 → ④ VM 자원이 남는가",
+  "description": "앱 · 컨테이너 · DB · 하드웨어를 위에서 아래로 훑고, 맨 아래 ⑤행에서 **밖(k6)에서 본 부하**를 본다. 크로스헤어가 공유되므로 ⑤행에서 무릎 시각을 짚으면 위쪽 행의 같은 시각이 함께 표시된다. 회차는 상단 `testid` 로 고른다 — 값이 loadtest/results 의 폴더 이름과 같다.",
   "tags": [
     "onprem",
     "overview"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 4,
   "refresh": "10s",
   "time": {
     "from": "now-30m",
@@ -70,7 +70,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_server_requests_seconds_count{uri=~\"/api/.*\"}[1m])) by (uri)",
+          "expr": "sum(rate(http_server_requests_seconds_count{uri=~\"/api/.*\"}[30s])) by (uri)",
           "legendFormat": "{{uri}}",
           "datasource": {
             "type": "prometheus",
@@ -124,7 +124,7 @@
             "uid": "prometheus"
           },
           "legendFormat": "평균 (전체)",
-          "expr": "sum(rate(http_server_requests_seconds_sum{uri=~\"/api/.*\"}[1m])) / clamp_min(sum(rate(http_server_requests_seconds_count{uri=~\"/api/.*\"}[1m])), 0.001)"
+          "expr": "sum(rate(http_server_requests_seconds_sum{uri=~\"/api/.*\"}[30s])) / clamp_min(sum(rate(http_server_requests_seconds_count{uri=~\"/api/.*\"}[30s])), 0.001)"
         },
         {
           "refId": "B",
@@ -133,7 +133,7 @@
             "uid": "prometheus"
           },
           "legendFormat": "평균 {{uri}}",
-          "expr": "sum(rate(http_server_requests_seconds_sum{uri=~\"/api/.*\"}[1m])) by (uri) / clamp_min(sum(rate(http_server_requests_seconds_count{uri=~\"/api/.*\"}[1m])) by (uri), 0.001)"
+          "expr": "sum(rate(http_server_requests_seconds_sum{uri=~\"/api/.*\"}[30s])) by (uri) / clamp_min(sum(rate(http_server_requests_seconds_count{uri=~\"/api/.*\"}[30s])) by (uri), 0.001)"
         },
         {
           "refId": "C",
@@ -188,7 +188,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[1m])) or vector(0)) / (sum(rate(http_server_requests_seconds_count[1m])) or vector(1))",
+          "expr": "(sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[30s])) or vector(0)) / (sum(rate(http_server_requests_seconds_count[30s])) or vector(1))",
           "legendFormat": "5xx 비율",
           "datasource": {
             "type": "prometheus",
@@ -200,8 +200,8 @@
     {
       "id": 105,
       "type": "timeseries",
-      "title": "JVM 힙 · DB 커넥션 풀",
-      "description": "힙은 왼쪽 축(바이트), 커넥션 수는 오른쪽 축(개). 힙이 상한에 붙거나 커넥션이 최대치에 붙으면 응답이 밀린다.",
+      "title": "JVM 힙 · DB 커넥션 풀 (대기 포함)",
+      "description": "힙은 왼쪽 축(바이트), 커넥션 수는 오른쪽 축(개). **포화 신호는 active 가 아니라 pending 이다** — 풀이 꽉 차면 active 는 상한에 붙은 채 머무를 뿐이고, 실제로 밀리는지는 대기 큐에만 나타난다.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -291,6 +291,24 @@
           },
           "legendFormat": "커넥션 최대",
           "expr": "hikaricp_connections_max"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "커넥션 대기(pending)",
+          "expr": "hikaricp_connections_pending"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "커넥션 타임아웃 누적",
+          "expr": "hikaricp_connections_timeout_total"
         }
       ]
     },
@@ -299,246 +317,247 @@
       "type": "row",
       "title": "② 컨테이너 — 컨테이너들이 자원을 얼마나 쓰나 (Docker Desktop 제약으로 합계만)",
       "description": "",
-      "collapsed": false,
+      "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
-      },
-      "panels": []
-    },
-    {
-      "id": 107,
-      "type": "timeseries",
-      "title": "전체 컨테이너 CPU",
-      "description": "컨테이너들이 쓰는 CPU와 VM 전체를 겹쳐 본다.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 0,
         "y": 10
       },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 8,
-            "showPoints": "never"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
+      "panels": [
         {
-          "refId": "A",
-          "expr": "rate(container_cpu_usage_seconds_total{id=\"/docker\"}[1m]) * 100",
-          "legendFormat": "컨테이너 합계",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "refId": "B",
-          "expr": "rate(container_cpu_usage_seconds_total{id=\"/\"}[1m]) * 100",
-          "legendFormat": "VM 전체",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ]
-    },
-    {
-      "id": 108,
-      "type": "timeseries",
-      "title": "전체 컨테이너 메모리",
-      "description": "",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 6,
-        "y": 10
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 8,
-            "showPoints": "never"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "container_memory_usage_bytes{id=\"/docker\"}",
-          "legendFormat": "컨테이너 합계",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "refId": "B",
-          "expr": "container_memory_usage_bytes{id=\"/\"}",
-          "legendFormat": "VM 전체",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ]
-    },
-    {
-      "id": 109,
-      "type": "timeseries",
-      "title": "컨테이너 메모리 상세",
-      "description": "워킹셋이 실제로 쓰는 양. 캐시는 압박 시 회수된다.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 12,
-        "y": 10
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 8,
-            "showPoints": "never"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "container_memory_working_set_bytes{id=\"/docker\"}",
-          "legendFormat": "워킹셋",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "refId": "B",
-          "expr": "container_memory_cache{id=\"/docker\"}",
-          "legendFormat": "페이지 캐시",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ]
-    },
-    {
-      "id": 110,
-      "type": "timeseries",
-      "title": "컨테이너가 VM에서 차지하는 비율",
-      "description": "컨테이너 전체가 VM 자원의 몇 %를 쓰는지. 100%에 가까워지면 호스트를 키워야 한다.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 18,
-        "y": 10
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 8,
-            "showPoints": "never"
-          },
-          "min": 0,
-          "max": 100
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
+          "id": 107,
+          "type": "timeseries",
+          "title": "전체 컨테이너 CPU",
+          "description": "컨테이너들이 쓰는 CPU와 VM 전체를 겹쳐 본다.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "legendFormat": "메모리 비율",
-          "expr": "container_memory_usage_bytes{id=\"/docker\"} / scalar(node_memory_MemTotal_bytes) * 100"
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 0,
+            "y": 10
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 8,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "rate(container_cpu_usage_seconds_total{id=\"/docker\"}[30s]) * 100",
+              "legendFormat": "컨테이너 합계",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "rate(container_cpu_usage_seconds_total{id=\"/\"}[30s]) * 100",
+              "legendFormat": "VM 전체",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
         },
         {
-          "refId": "B",
+          "id": 108,
+          "type": "timeseries",
+          "title": "전체 컨테이너 메모리",
+          "description": "",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "legendFormat": "CPU 비율",
-          "expr": "rate(container_cpu_usage_seconds_total{id=\"/docker\"}[1m]) / scalar(count(node_cpu_seconds_total{mode=\"idle\"})) * 100"
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 6,
+            "y": 10
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 8,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "container_memory_usage_bytes{id=\"/docker\"}",
+              "legendFormat": "컨테이너 합계",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "container_memory_usage_bytes{id=\"/\"}",
+              "legendFormat": "VM 전체",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 109,
+          "type": "timeseries",
+          "title": "컨테이너 메모리 상세",
+          "description": "워킹셋이 실제로 쓰는 양. 캐시는 압박 시 회수된다.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 12,
+            "y": 10
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 8,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "container_memory_working_set_bytes{id=\"/docker\"}",
+              "legendFormat": "워킹셋",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "container_memory_cache{id=\"/docker\"}",
+              "legendFormat": "페이지 캐시",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 110,
+          "type": "timeseries",
+          "title": "컨테이너가 VM에서 차지하는 비율",
+          "description": "컨테이너 전체가 VM 자원의 몇 %를 쓰는지. 100%에 가까워지면 호스트를 키워야 한다.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 18,
+            "y": 10
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 8,
+                "showPoints": "never"
+              },
+              "min": 0,
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "메모리 비율",
+              "expr": "container_memory_usage_bytes{id=\"/docker\"} / scalar(node_memory_MemTotal_bytes) * 100"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "CPU 비율",
+              "expr": "rate(container_cpu_usage_seconds_total{id=\"/docker\"}[30s]) / scalar(count(node_cpu_seconds_total{mode=\"idle\"})) * 100"
+            }
+          ]
         }
       ]
     },
@@ -552,7 +571,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 11
       },
       "panels": []
     },
@@ -569,7 +588,7 @@
         "h": 8,
         "w": 5,
         "x": 0,
-        "y": 19
+        "y": 12
       },
       "fieldConfig": {
         "defaults": {
@@ -636,7 +655,7 @@
         "h": 8,
         "w": 4,
         "x": 5,
-        "y": 19
+        "y": 12
       },
       "fieldConfig": {
         "defaults": {
@@ -663,7 +682,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(mysql_global_status_queries[1m])",
+          "expr": "rate(mysql_global_status_queries[30s])",
           "legendFormat": "전체 쿼리",
           "datasource": {
             "type": "prometheus",
@@ -672,7 +691,7 @@
         },
         {
           "refId": "B",
-          "expr": "rate(mysql_global_status_commands_total{command=\"select\"}[1m])",
+          "expr": "rate(mysql_global_status_commands_total{command=\"select\"}[30s])",
           "legendFormat": "SELECT",
           "datasource": {
             "type": "prometheus",
@@ -694,7 +713,7 @@
         "h": 8,
         "w": 5,
         "x": 9,
-        "y": 19
+        "y": 12
       },
       "fieldConfig": {
         "defaults": {
@@ -721,7 +740,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(mysql_global_status_slow_queries[1m])",
+          "expr": "rate(mysql_global_status_slow_queries[30s])",
           "legendFormat": "슬로우 쿼리/s",
           "datasource": {
             "type": "prometheus",
@@ -752,7 +771,7 @@
         "h": 8,
         "w": 5,
         "x": 14,
-        "y": 19
+        "y": 12
       },
       "fieldConfig": {
         "defaults": {
@@ -810,7 +829,7 @@
         "h": 8,
         "w": 5,
         "x": 19,
-        "y": 19
+        "y": 12
       },
       "fieldConfig": {
         "defaults": {
@@ -863,7 +882,7 @@
             "uid": "prometheus"
           },
           "legendFormat": "히트율 (최근 5분)",
-          "expr": "(1 - rate(mysql_global_status_innodb_buffer_pool_reads[5m]) / clamp_min(rate(mysql_global_status_innodb_buffer_pool_read_requests[5m]), 0.001)) * 100"
+          "expr": "(1 - rate(mysql_global_status_innodb_buffer_pool_reads[30s]) / clamp_min(rate(mysql_global_status_innodb_buffer_pool_read_requests[30s]), 0.001)) * 100"
         }
       ]
     },
@@ -877,7 +896,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 20
       },
       "panels": []
     },
@@ -894,7 +913,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 28
+        "y": 21
       },
       "fieldConfig": {
         "defaults": {
@@ -921,7 +940,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)",
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[30s])) * 100)",
           "legendFormat": "전체 사용률",
           "datasource": {
             "type": "prometheus",
@@ -930,7 +949,7 @@
         },
         {
           "refId": "B",
-          "expr": "avg(rate(node_cpu_seconds_total{mode=\"iowait\"}[1m])) * 100",
+          "expr": "avg(rate(node_cpu_seconds_total{mode=\"iowait\"}[30s])) * 100",
           "legendFormat": "I/O 대기",
           "datasource": {
             "type": "prometheus",
@@ -952,7 +971,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 28
+        "y": 21
       },
       "fieldConfig": {
         "defaults": {
@@ -1010,7 +1029,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 28
+        "y": 21
       },
       "fieldConfig": {
         "defaults": {
@@ -1037,7 +1056,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(node_disk_read_bytes_total[1m]))",
+          "expr": "sum(rate(node_disk_read_bytes_total[30s]))",
           "legendFormat": "읽기",
           "datasource": {
             "type": "prometheus",
@@ -1046,7 +1065,7 @@
         },
         {
           "refId": "B",
-          "expr": "sum(rate(node_disk_written_bytes_total[1m]))",
+          "expr": "sum(rate(node_disk_written_bytes_total[30s]))",
           "legendFormat": "쓰기",
           "datasource": {
             "type": "prometheus",
@@ -1068,7 +1087,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 28
+        "y": 21
       },
       "fieldConfig": {
         "defaults": {
@@ -1112,6 +1131,303 @@
           }
         }
       ]
+    },
+    {
+      "type": "row",
+      "title": "⑤ 부하 — 밖에서 본 것 (k6)",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      }
+    },
+    {
+      "id": 501,
+      "type": "timeseries",
+      "title": "걸린 부하 · 버린 부하",
+      "description": "계단 목표(초당 20→600 진입)를 실제로 채우고 있는지. **버린 진입이 0 에서 오르면 그 구간은 앱이 아니라 k6 자신의 한계를 잰 것이라 폐기한다.** k6 는 값이 0 인 카운터를 보내지 않으므로 `or vector(0)` 으로 0 선을 그린다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 30
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "소화한 진입/초",
+          "expr": "sum(rate(k6_iterations_total{testid=~\"$testid\"}[30s]))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "버린 진입/초",
+          "expr": "sum(rate(k6_dropped_iterations_total{testid=~\"$testid\"}[30s])) or vector(0)"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "요청/초 (진입×2)",
+          "expr": "sum(rate(k6_http_reqs_total{testid=~\"$testid\"}[30s]))"
+        }
+      ]
+    },
+    {
+      "id": 502,
+      "type": "timeseries",
+      "title": "판정 — 무부하 대비 배수",
+      "description": "**이 그룹의 핵심.** 회차 요약이 내는 판정값과 같은 지표다(측정 ÷ 그 회차 무부하). 3 배 선을 넘는 지점이 무릎이고, 크로스헤어로 위쪽 DB·하드웨어 행의 같은 시각을 짚으면 무엇이 먼저 포화됐는지 대응된다. 배수라 단위가 없다 — 초로 두면 안 된다. 네이티브 히스토그램에서 **구간별로** 분위수를 계산한다 — k6 의 기본 게이지(_p95)는 테스트 시작부터 누적한 값이라 부하가 올라가도 단조 감소해 계단별 판정에 쓸 수 없다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 30
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "배수 p95",
+          "expr": "histogram_quantile(0.95, sum(rate(k6_latency_ratio{testid=~\"$testid\"}[30s])))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "배수 p99",
+          "expr": "histogram_quantile(0.99, sum(rate(k6_latency_ratio{testid=~\"$testid\"}[30s])))"
+        }
+      ]
+    },
+    {
+      "id": 503,
+      "type": "timeseries",
+      "title": "클라이언트가 본 목록 응답",
+      "description": "k6 가 잰 `/api/products` 응답. 위 ①행의 서버측 지연과의 **차이가 큐 대기 시간**이다 — 서버는 빠른데 여기가 느리면 앱 안이 아니라 앞에서 밀린 것이다. k6 는 시간 지표를 초 단위로 보낸다(실측 확인). 네이티브 히스토그램에서 **구간별로** 분위수를 계산한다 — k6 의 기본 게이지(_p95)는 테스트 시작부터 누적한 값이라 부하가 올라가도 단조 감소해 계단별 판정에 쓸 수 없다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 30
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds{name=\"products_list\", testid=~\"$testid\"}[30s])))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "p99",
+          "expr": "histogram_quantile(0.99, sum(rate(k6_http_req_duration_seconds{name=\"products_list\", testid=~\"$testid\"}[30s])))"
+        }
+      ]
+    },
+    {
+      "id": 504,
+      "type": "timeseries",
+      "title": "실패율 · 체크 통과율",
+      "description": "실패율은 0 이어야 한다. 오르면 즉시 중단하고 원인부터 본다 — 특히 429 는 요청 제한에 걸린 것이라 그 상태의 측정은 앱이 아니라 제한기를 잰 것이 된다. 축을 0~100% 로 고정했다: 빈 시리즈가 섞이면 자동 축이 엉뚱하게 잡힌다. 체크 통과율은 check() 가 있는 시나리오(s00)에서만 그려진다 — s01 에는 check 가 없다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 30
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "실패율",
+          "expr": "max(k6_http_req_failed_rate{testid=~\"$testid\"})"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "체크 통과율",
+          "expr": "max(k6_checks_rate{testid=~\"$testid\"})"
+        }
+      ]
     }
-  ]
+  ],
+  "graphTooltip": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "testid",
+        "label": "회차 (testid)",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(k6_iterations_total, testid)",
+          "refId": "testid"
+        },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  }
 }

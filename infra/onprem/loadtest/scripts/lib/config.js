@@ -24,6 +24,9 @@ export const TREND_STATS = ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max
 // 몇 배까지 허용할지. 기본 3배.
 export const ALLOWED_RATIO = Number(__ENV.ALLOWED_RATIO || 3);
 
+// 이 배수를 넘으면 테스트를 중단한다(Breakpoint 회차에서 붕괴 구간을 오래 돌지 않기 위해).
+export const ABORT_RATIO = Number(__ENV.ABORT_RATIO || 10);
+
 /**
  * 판정 지표. 절대 ms 가 아니라 **그 회차의 무부하 대비 배수**를 기록한다.
  *
@@ -35,10 +38,15 @@ export const ALLOWED_RATIO = Number(__ENV.ALLOWED_RATIO || 3);
 export const latencyRatio = new Trend('latency_ratio');
 
 // 무부하 표본 수. **근거 있는 실측값이 아니라 임의로 정한 값이다.**
-// 앞 3 회는 콜드 스타트(JIT·커넥션 풀·버퍼풀 워밍업)라 버리고 남은 7 개의 중앙값을 쓴다.
+// 앞 5 회는 콜드 스타트(JIT·커넥션 풀·버퍼풀 워밍업)라 버리고 남은 15 개의 중앙값을 쓴다.
 // 평균이 아니라 중앙값인 이유는 한 번 튄 값에 기준선 전체가 끌려가지 않게 하기 위해서다.
-const BASELINE_WARMUP = 3;
-const BASELINE_SAMPLES = 7;
+//
+// 처음에 3+7 로 두었다가 늘렸다. 같은 조건의 SMOKE 두 번에서 기준선이 19.1ms 와 11.7ms 로
+// 잡혀 배수 판정이 1.72배 ↔ 2.37배로 뒤집혔다 — **기준선은 판정의 분모라 여기가 흔들리면
+// 기록된 모든 숫자가 흔들린다.** 20 건은 0.5 초도 걸리지 않고, 아래 태그 분리 덕분에
+// 보고 숫자에도 섞이지 않는다.
+const BASELINE_WARMUP = 5;
+const BASELINE_SAMPLES = 15;
 
 /**
  * setup() 에서 부른다. VU 1 로 무부하를 재서 **이 회차의 기준선**을 만든다.
@@ -50,10 +58,16 @@ export function measureBaseline(probes) {
   const out = {};
   for (const p of probes) {
     const samples = [];
+    const params = { tags: { name: `baseline_${p.key}` } };
+    // 로그인 회차는 기준선도 **같은 헤더로** 재야 한다. 분모와 분자의 요청 모양이 다르면
+    // 배수가 앱 성능이 아니라 요청 모양의 차이를 재게 된다.
+    if (p.headers) params.headers = p.headers;
     for (let i = 0; i < BASELINE_WARMUP + BASELINE_SAMPLES; i++) {
-      const res = http.get(p.url, { tags: { name: `baseline_${p.key}` } });
+      // 쓰기 경로는 POST 로 잰다. 기준선 측정도 행을 만들지만(20건) 10만 건 대비 무시할 수준이고,
+      // **분모와 분자가 같은 요청이어야** 배수가 의미를 갖는다.
+      const res = p.method === 'POST' ? http.post(p.url, p.body, params) : http.get(p.url, params);
       // 여기에 429 가 섞이면 본문 없는 3ms 가 기준선이 되고, 이후 모든 판정이 무의미해진다.
-      expectOk(res, `baseline_${p.key}`);
+      expectOk(res, `baseline_${p.key}`, p.okStatuses || [200]);
       if (i >= BASELINE_WARMUP) samples.push(res.timings.duration);
     }
     samples.sort((a, b) => a - b);
@@ -71,12 +85,31 @@ export function recordRatio(res, baselineMs) {
  * 판정 기준. 시나리오마다 따로 쓰면 회차 비교가 어긋나므로 한 곳에서 만든다.
  * 절대 ms 임계값을 쓰던 예전 `thresholdsFor()` 는 제거했다 — 두 가지 판정 경로가 남아 있으면
  * 어느 쪽으로 재판정됐는지 나중에 알 수 없다.
+ *
+ * `reportNames` 로 준 태그는 **보고용 서브메트릭**이 된다. `setup()` 의 기준선 측정
+ * (`baseline_*`)도 http_req_duration·http_reqs 에 그대로 섞이는데, 그걸 빼고 부하 구간의
+ * 해당 요청만 보기 위해서다. k6 는 **임계값이 걸린 태그 조합만** 따로 집계하므로
+ * 임계값을 거는 것 외에 서브메트릭을 만들 방법이 없다 — 값 60 초는 사실상 걸리지 않는
+ * 크기이고 **판정용이 아니다.** 판정은 위의 latency_ratio 하나뿐이다.
  */
-export function ratioThresholds() {
-  return {
+export function ratioThresholds(reportNames = []) {
+  const t = {
     http_req_failed: ['rate<0.01'],
-    latency_ratio: [`p(95)<${ALLOWED_RATIO}`],
+    latency_ratio: [
+      `p(95)<${ALLOWED_RATIO}`,
+      // **무릎을 확실히 넘으면 그 자리에서 끝낸다.** 2회차에서 무릎을 넘긴 뒤 10분을 붕괴
+      // 상태로 돌았고, 그 구간은 VM CPU 90% 라 통째로 폐기했다 — 10분이 버려졌을 뿐 아니라
+      // 호스트 포화가 무릎 직후 구간까지 오염시켰다.
+      // 허용선(3배)이 아니라 그보다 높은 값에서 끊는 이유: Breakpoint 는 넘는 지점을 찾는
+      // 것이 목적이라 **확실히 무너진 뒤** 끊어야 무릎이 기록된다.
+      // ABORT_RATIO 기본 10 은 임의로 고른 값이다 — 2회차 무릎 구간이 12.4배였던 것을 참고했다.
+      { threshold: `p(95)<${ABORT_RATIO}`, abortOnFail: true, delayAbortEval: '30s' },
+    ],
   };
+  for (const name of reportNames) {
+    t[`http_req_duration{name:${name}}`] = ['p(95)<60000'];
+  }
+  return t;
 }
 
 /**
@@ -88,7 +121,7 @@ export function ratioThresholds() {
  *
  * s00-ratelimit 만 예외다 — 그 시나리오는 429 를 기대하고 재므로 이 함수를 쓰지 않는다.
  */
-export function expectOk(res, name) {
+export function expectOk(res, name, okStatuses = [200]) {
   if (res.status === 429) {
     exec.test.abort(
       `${name} 이 429 다. 요청 제한(IP 당 기본 초당 6건)에 걸렸다 — 이 상태로 측정하면 ` +
@@ -96,7 +129,8 @@ export function expectOk(res, name) {
       `  RATE_LIMIT_CAPACITY=100000 docker compose --env-file .env up -d app`
     );
   }
-  if (res.status !== 200) {
-    exec.test.abort(`${name} 이 HTTP ${res.status}. 측정을 중단한다.`);
+  // 등록은 201 을 돌려준다. 시나리오마다 정상 코드가 달라 목록으로 받는다.
+  if (okStatuses.indexOf(res.status) === -1) {
+    exec.test.abort(`${name} 이 HTTP ${res.status} (기대: ${okStatuses.join('/')}). 측정을 중단한다.`);
   }
 }

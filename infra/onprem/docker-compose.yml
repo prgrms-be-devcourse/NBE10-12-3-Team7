@@ -145,6 +145,18 @@ services:
       DB_USERNAME: ${DB_USERNAME:-dongne}
       DB_PASSWORD: ${DB_PASSWORD:-dongne1234}
       JWT_SECRET: ${JWT_SECRET:-dongne-market-local-dev-secret-please-change-0123456789}
+      # 액세스 토큰 수명. 기본 900초(15분)인데 부하 계단이 15분 30초라, 로그인 회차에서
+      # setup() 이 받은 토큰이 **테스트 막바지에 만료돼 401 로 중단**된다. 토큰 갱신 비용은
+      # 이번에 재려는 것이 아니므로 회차 동안만 크게 준다(조건은 conditions.md 에 남는다).
+      #   JWT_ACCESS_TTL=3600 docker compose --env-file .env up -d app
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
+      # DB 커넥션 풀 상한. application.yml 에 hikari 설정이 없어 **HikariCP 기본값 10** 이
+      # 쓰이고 있었고, 부하테스트 2회차에서 동네 필터 경로의 무릎(초당 200~230 진입)이
+      # 이 풀의 고갈에서 왔다(pending 0→187, active 10 고정, 그때 VM CPU 는 57%).
+      # 코드가 아니라 기본값이라 env 로 덮을 수 있다 — 앱 이미지를 다시 빌드하지 않아도 되므로
+      # 회차 간 "같은 이미지" 조건이 유지된다.
+      #   DB_POOL_MAX=20 docker compose --env-file .env up -d app
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${DB_POOL_MAX:-10}
       # 인증 관련 TTL 데이터 저장소(같은 스택의 redis 컨테이너)
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -261,6 +273,19 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro   # 도커 팩토리 등록 → name 라벨
       - /sys/fs/cgroup:/sys/fs/cgroup:ro               # VM의 컨테이너별 cgroup 통계
 
+  # nginx 지표(활성/대기 연결, accepted 대 handled). 웹 진입 계층에 부하를 걸 때
+  # **연결이 어디서 막히는지**를 보는 유일한 수단이다 — cAdvisor 는 Docker Desktop 에서
+  # 컨테이너별로 갈리지 않아(name 라벨 없음) nginx 몫을 따로 볼 수 없다.
+  nginx-exporter:
+    profiles: ["observability"]
+    image: nginx/nginx-prometheus-exporter:1.3.0
+    container_name: dongne-nginx-exporter
+    restart: unless-stopped
+    command:
+      - '--nginx.scrape-uri=http://nginx:8081/stub_status'
+    depends_on:
+      - nginx
+
   # 호스트 자원. ⚠️ Docker Desktop에서는 맥이 아니라 컨테이너가 실제로 도는 리눅스 VM이 보인다.
   node-exporter:
     profiles: ["observability"]
@@ -303,6 +328,11 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=7d'
       - '--web.enable-remote-write-receiver'   # k6 → Prometheus remote-write 수신(부하테스트 클라이언트측 p95/p99)
+      # k6 의 트렌드 지표를 네이티브 히스토그램으로 받는다. 이게 없으면 k6 는 p95 를
+      # **테스트 시작부터 누적한 게이지**로 보내서, 부하가 올라가도 값이 단조 감소한다
+      # (실측: 1회차에서 2.57 → 1.17 로 계속 내려갔고 마지막 값이 전체 합산값과 같았다).
+      # 그 상태로는 "무릎이 몇 번째 계단에서 생겼나"를 시간축에서 읽을 수 없다.
+      - '--enable-feature=native-histograms'
 
   grafana:
     profiles: ["observability"]
