@@ -23,6 +23,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
 import org.springframework.data.domain.Sort
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.ActiveProfiles
 import java.math.BigDecimal
 
@@ -50,6 +51,9 @@ class ProductRepositoryTest {
 
     @Autowired
     lateinit var entityManager: EntityManager
+
+    @Autowired
+    lateinit var jdbcTemplate: JdbcTemplate
 
     @Test
     fun `상품을 저장하고 기본 필드와 시간 필드를 조회할 수 있다`() {
@@ -1174,6 +1178,37 @@ class ProductRepositoryTest {
         assertThat(products).hasSize(regions.size)
         // 목록 1 + 지역 배치 1. 상품이 5건이든 30건이든 이 값은 늘지 않는다.
         assertThat(queryCount).isLessThanOrEqualTo(2)
+    }
+
+    /** `@DynamicUpdate` 가 없으면 조회수 UPDATE 가 전 컬럼을 덮어써 찜 수가 0 으로 되돌아간다. */
+    @Test
+    fun `조회수를 올려도 그 사이 커밋된 찜 수를 덮어쓰지 않는다`() {
+        val member = memberRepository.save(Member.createUser("lost-update@example.com", "encodedPassword", "판매자"))
+        val category = categoryRepository.save(Category("갱신유실"))
+        val product =
+            productRepository.saveAndFlush(
+                Product.create(
+                    member,
+                    category,
+                    "갱신 유실 상품",
+                    "갱신 유실 상품 설명",
+                    BigDecimal.valueOf(10000),
+                    saveGangnamWithDong(),
+                ),
+            )
+        entityManager.clear()
+
+        val loaded = productRepository.findById(product.id!!).orElseThrow()
+        // 다른 요청이 찜 수를 올려 커밋한 상황 — 별도 커넥션(auto-commit)으로 재현한다.
+        jdbcTemplate.update("update products set favorite_count = favorite_count + 1 where id = ?", product.id)
+
+        loaded.increaseViewCount()
+        productRepository.flush()
+        entityManager.clear()
+
+        val reloaded = productRepository.findById(product.id!!).orElseThrow()
+        assertThat(reloaded.favoriteCount).isEqualTo(1)
+        assertThat(reloaded.viewCount).isEqualTo(1)
     }
 
     private fun saveSeoul(): Region =
