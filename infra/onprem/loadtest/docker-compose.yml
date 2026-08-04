@@ -38,6 +38,9 @@ services:
       # 항상 기본 계단을 보여준다. 확인하려면 `k6 run` 으로 돌려야 한다.
       SMOKE: ${SMOKE:-}
       SOAK_VU: ${SOAK_VU:-}
+      SOAK_RATE: ${SOAK_RATE:-}
+      PRE_VUS: ${PRE_VUS:-}
+      MAX_VUS: ${MAX_VUS:-}
       ALLOWED_RATIO: ${ALLOWED_RATIO:-}
       TARGET_RPS: ${TARGET_RPS:-}
       DURATION: ${DURATION:-}

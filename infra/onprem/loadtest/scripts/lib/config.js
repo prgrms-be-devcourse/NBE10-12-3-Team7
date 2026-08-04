@@ -35,10 +35,15 @@ export const ALLOWED_RATIO = Number(__ENV.ALLOWED_RATIO || 3);
 export const latencyRatio = new Trend('latency_ratio');
 
 // 무부하 표본 수. **근거 있는 실측값이 아니라 임의로 정한 값이다.**
-// 앞 3 회는 콜드 스타트(JIT·커넥션 풀·버퍼풀 워밍업)라 버리고 남은 7 개의 중앙값을 쓴다.
+// 앞 5 회는 콜드 스타트(JIT·커넥션 풀·버퍼풀 워밍업)라 버리고 남은 15 개의 중앙값을 쓴다.
 // 평균이 아니라 중앙값인 이유는 한 번 튄 값에 기준선 전체가 끌려가지 않게 하기 위해서다.
-const BASELINE_WARMUP = 3;
-const BASELINE_SAMPLES = 7;
+//
+// 처음에 3+7 로 두었다가 늘렸다. 같은 조건의 SMOKE 두 번에서 기준선이 19.1ms 와 11.7ms 로
+// 잡혀 배수 판정이 1.72배 ↔ 2.37배로 뒤집혔다 — **기준선은 판정의 분모라 여기가 흔들리면
+// 기록된 모든 숫자가 흔들린다.** 20 건은 0.5 초도 걸리지 않고, 아래 태그 분리 덕분에
+// 보고 숫자에도 섞이지 않는다.
+const BASELINE_WARMUP = 5;
+const BASELINE_SAMPLES = 15;
 
 /**
  * setup() 에서 부른다. VU 1 로 무부하를 재서 **이 회차의 기준선**을 만든다.
@@ -71,12 +76,22 @@ export function recordRatio(res, baselineMs) {
  * 판정 기준. 시나리오마다 따로 쓰면 회차 비교가 어긋나므로 한 곳에서 만든다.
  * 절대 ms 임계값을 쓰던 예전 `thresholdsFor()` 는 제거했다 — 두 가지 판정 경로가 남아 있으면
  * 어느 쪽으로 재판정됐는지 나중에 알 수 없다.
+ *
+ * `reportNames` 로 준 태그는 **보고용 서브메트릭**이 된다. `setup()` 의 기준선 측정
+ * (`baseline_*`)도 http_req_duration·http_reqs 에 그대로 섞이는데, 그걸 빼고 부하 구간의
+ * 해당 요청만 보기 위해서다. k6 는 **임계값이 걸린 태그 조합만** 따로 집계하므로
+ * 임계값을 거는 것 외에 서브메트릭을 만들 방법이 없다 — 값 60 초는 사실상 걸리지 않는
+ * 크기이고 **판정용이 아니다.** 판정은 위의 latency_ratio 하나뿐이다.
  */
-export function ratioThresholds() {
-  return {
+export function ratioThresholds(reportNames = []) {
+  const t = {
     http_req_failed: ['rate<0.01'],
     latency_ratio: [`p(95)<${ALLOWED_RATIO}`],
   };
+  for (const name of reportNames) {
+    t[`http_req_duration{name:${name}}`] = ['p(95)<60000'];
+  }
+  return t;
 }
 
 /**
