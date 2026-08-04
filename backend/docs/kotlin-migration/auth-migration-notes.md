@@ -1658,3 +1658,121 @@ Mockito 매처의 Kotlin non-null 파라미터 충돌은 6단계와 같은 typed
 - Spring context 기동·controller bean 3개·mapping 12개 등록은 실제 context 테스트로,
   포트 bind 는 기존 `ChatWebSocketTest`(RANDOM_PORT) 통과로 확인
 - 외부 OAuth provider·SMTP·운영 credential 미사용 (테스트 값 전부 명백한 더미)
+
+---
+
+# PR H — Java 테스트 전환과 잔존 제거 (회귀 안전망 세대교체)
+
+브랜치 `feature/auth_kotlin_tests` / 기준 develop `cd73e50` (member Kotlin 전환 #99 병합 후로 rebase).
+1~7단계 내내 **회귀 안전망 역할이라 의도적으로 Java 로 남겨둔 기존 테스트 23개**가 마지막 잔여였다.
+22개(약 4,100줄)는 1:1 전환, 인터롭 테스트 1개는 아래 「계약 분해」로 처리했다.
+결과: **backend 전체(main·test)에서 `.java` 0개**, `src/test/java` 소스셋 디렉터리 삭제.
+
+## 인터롭 테스트 계약 분해 — "Java 로 남긴다"를 뒤집은 이유
+
+`AuthKotlinInteropCompatibilityTest`(42건)의 검증 수단은 "Java 소스에서 그 호출이 컴파일된다"는
+사실 자체였다. 그런데 rebase 기준 develop 에서 member·global 시더까지 전환이 끝나
+**저장소에 Java 호출자가 0**이 됐다 — 호출자 없는 호출-호환성 검증은 대상을 잃는다.
+그래서 42개 항목을 전수 분류했다: **언어와 무관하게 유효한 계약은 Kotlin 으로 대체하고,
+Java 호출 호환성만 검증하던 항목은 제거한다.**
+
+| 원 그룹(테스트 수) | 제거 | 대체 | 비고 |
+|---|---|---|---|
+| JvmRecords (4) | `isRecord`·record 접근자 Java 호출 (2) | `oidcNonce` null 허용 🔴 · record 값 동등성 (2) | null 허용은 카카오 실동작 계약(PR A 절) |
+| PlainDtos (5) | Java 생성자/팩토리 호출·JVM getter 이름 (2) | equals/hashCode=Object 선언 · 값 동등성 없음 · nullable 유지 앵커 (3) | data class 화 방지는 언어 무관 설계 계약 |
+| JsonContract (4) | — | 전부 (4) | 프론트·모바일과의 와이어 계약 |
+| BeanValidation (5) | — | 전부 (5) | 제약·메시지는 사용자-노출 계약 |
+| OAuthLoginRequest 생성자 표면 (5) | 리플렉션 표면 3 (public 생성자 0·protected 유일·non-final) | Jackson 역직렬화 동작 (2) | 표면은 Java 소비자 전용, 동작은 유지 |
+| 요청 DTO protected 생성자 표면 (6) | 전부 (6) | — | 하위클래스 0·`@ModelAttribute` 0·Java 소스 0 |
+| RequestDtoJackson (5) | — | 전부 (5) | 누락/null/blank/boolean 와이어 동작 |
+| RequestDtoValidation (3) | 무인자 생성자 우회 검증 (1) | 역직렬화·검증 분리 · 메시지 (2) | |
+| ResponseDtoSurface (4) | 전부 (4) — finality·`@JvmStatic` Java 호출·생성자 가시성 | — | |
+| public setter 부재 (1) | — | 전부 (1) | 불변 설계는 Kotlin API 에도 유효 |
+| **계 (42)** | **18 항목** | **24 항목 → 중복 병합해 18개 테스트** | 대체처: `AuthDtoContractTest.kt` |
+
+오해 방지 두 가지:
+- boolean getter 의 **JVM 이름**(`isVerified()`) 검증은 제거했지만 **JSON 필드명**(`verified`,
+  `isVerified` 필드 미생성) 검증은 대체 테스트가 그대로 유지한다 — PR A 의 JSON 소실 회귀 방어는 살아 있다.
+- 제거는 "표면을 바꿔도 된다"가 아니라 "그 표면을 고정할 소비자가 사라졌다"는 뜻이다. main 코드는
+  이 PR 에서 한 줄도 바꾸지 않았다(`@JvmRecord`·`@JvmStatic`·protected 생성자 등 전부 그대로).
+
+## rebase 가 강제한 수정 — member Kotlin 전환(#99) 반영 2종
+
+H 의 테스트들은 Java `Member` 기준으로 전환됐는데 rebase 로 member 가 Kotlin 이 되면서
+`AuthServiceTest.kt` 가 컴파일 에러를 냈다. 수정은 언어 경계가 강제한 것뿐이다.
+
+- `Member.createUser`/`createSocialUser` 의 파라미터가 Kotlin non-null `String` 이 되어
+  `request.email!!` 9곳 (전부 직전 줄에서 리터럴로 생성한 요청이라 null 불가능 — 동작 동일)
+- `.extracting<AgreementType>(MemberAgreement::getAgreementType)` → `::agreementType`
+  (Java getter 참조가 Kotlin 프로퍼티 참조로 — 동일 접근자 호출)
+
+## 원칙 — main 전환과 무엇이 다른가
+
+테스트는 공개 API 가 아니므로 `javap` 표면 비교가 성립하지 않는다. 대신 게이트를 이렇게 정했다.
+
+1. **1:1 전환**: 테스트 메서드명·`@DisplayName`·한국어 주석·구획 주석·검증 값 전부 보존.
+   이름 백틱화·구조 개선·단언 강화 금지(안전망을 바꾸면서 안전망을 믿을 수는 없다).
+2. **클래스별 테스트 수 baseline 대조**: 전환 전 XML 리포트에서 auth 전 클래스의 (클래스, 테스트 수)를
+   떠 두고, 전환 후 동일 방식으로 재추출해 diff. 총합만 보면 "한 클래스에서 빠지고 다른 클래스에서
+   늘어난" 종류의 손실을 놓친다.
+3. `@Tag("integration")`·`@Disabled`(사유 문자열 포함) 등 어노테이션 바이트 단위 보존 —
+   `integrationTest` 태스크가 태그로 선별하므로 태그 손실은 **조용한 테스트 누락**이 된다.
+
+## 실제 발견 문제 — 컴파일에서 잡힌 3종 4건
+
+| 위치 | 문제 | 처리 |
+|---|---|---|
+| `AuthControllerTest` | `response.getCookie()` 가 `Cookie?` — Java 는 단언 후 바로 접근 가능했다 | 직전 `isNotNull()` 단언이 있으므로 `!!` (동작 동일) |
+| `RedisEmailVerificationCode`·`RedisPasswordResetToken` RepositoryTest | `.get().satisfies { }` 의 SAM+vararg 오버로드를 Kotlin 이 추론하지 못함 | 단일 오버로드 `hasValueSatisfying` 으로 — 빈 Optional 실패 의미 동일 |
+| `AuthServiceTest` | `.extracting(메서드참조)` 가 vararg(`Tuple`) 오버로드로 풀려 타입 불일치 | 명시적 제네릭 `.extracting<AgreementType>(...)` 으로 단일 Function 오버로드 강제 |
+
+## 실제 발견 문제 — 런타임 연쇄 실패 🔴 (문서화된 함정을 그대로 밟았다)
+
+`PasswordResetControllerTest` 4건이 한꺼번에 깨졌다.
+
+```
+java.lang.NullPointerException: cap(...) must not be null
+  → InvalidUseOfMatchersException / TooManyActualInvocations (2차 오류)
+```
+
+원인: `val bodyCaptor = ArgumentCaptor.forClass(String::class.java)` — **명시적 Kotlin 타입 없이**
+선언해 `forClass` 의 platform 제네릭이 `cap<T>` 추론을 오염시켰고, non-null `EmailSender.send(String)`
+자리에서 호출부 `checkNotNullExpressionValue` 가 터졌다. NPE 가 매처 스택을 오염시켜 무관해 보이는
+3건(`TooManyActualInvocations` 포함)이 연쇄로 깨지는, 6단계 기록과 동일한 실패 형태다.
+
+이건 **6단계 「테스트 작성 관행」절이 이미 경고한 함정**이다 — "captor 변수의 명시적 Kotlin 타입 선언"
+한 줄을 빠뜨리면 컴파일은 통과하고 런타임에만 죽는다는 것을 재확인했다.
+수정: `val bodyCaptor: ArgumentCaptor<String> = ...` 한 줄. 4건 전부 복구.
+
+## 파일별 주요 판단 (전부 언어 경계가 강제한 것)
+
+- **Mockito 헬퍼는 필요한 곳에만**: 매처 사용처 전수 감사 결과 대부분의 대상 파라미터가
+  nullable(`String?` 등) 또는 당시 Java 였던 member 의 platform 타입이라 표준 `any()` 로 충분했다
+  (rebase 로 member 가 Kotlin 이 된 뒤에도 해당 지점은 nullable·`JpaRepository` 플랫폼 시그니처라 그대로 유효 — 컴파일로 확인).
+  helper 가 실제 필요한 곳은 non-null `EmailSender.send` 를 verify 하는 2개 파일의 `cap()` 뿐
+  (`PasswordResetControllerTest`·`PasswordResetServiceTest`). 불필요한 파일에 복사하지 않았다(죽은 코드).
+- **BDD 스타일 유지**: `AuthServiceTest` 는 원본이 `BDDMockito.given` 일색이라 그대로 —
+  백틱 `` `when` `` 으로 갈아타지 않았다(1:1 원칙).
+- **Testcontainers static → companion object**: `@Container val` 은 static 필드로 내려가 확장이
+  그대로 찾고, `@DynamicPropertySource` 만 `@JvmStatic` 필요(진짜 static 메서드 요건).
+- **record 접근자 → 프로퍼티**: `identity.provider()` → `identity.provider` 등 —
+  대상이 Kotlin 이 된 데 따른 자연 변환, JVM 상 동일 접근자 호출.
+- **박싱/승격 명시화**: Java 의 암묵 `int→long` 확대는 `.toLong()` 으로, `Long.class` 는
+  `Long::class.javaObjectType` 으로 (`Long::class.java` 는 primitive `long.class` 가 되어 오판).
+- **Java text block → raw string + `trimIndent()`**: text block 이 갖던 말미 개행 1개가 사라진다.
+  JSON 본문·SQL 로만 쓰여 파싱 의미 동일 — 허용 차이로 기록. JSON 페이로드는 바이트 보존을 위해
+  장문 단일행 raw string 을 허용했다(ktlint max-line-length 경고보다 페이로드 보존 우선).
+
+## 검증
+
+- baseline: develop `cd73e50` 을 **깨끗한 임시 worktree** 에 받아 clean 실행 —
+  `test` **984**/실패 0/skip 0 · `integrationTest` 44/실패 0/비활성 1 · ktlint·`bootJar` 성공.
+  전 클래스의 (클래스, 테스트 수)를 XML 리포트에서 전수 확보
+- 최종(H): `clean test` **960**/실패 0/skip 0 · `integrationTest` **44**/0/비활성 1
+  (`OAuthEndpointRateLimitOrderTest`, `@Disabled` 사유 문자열까지 보존) ·
+  `ktlintTestSourceSetCheck` 통과 · `bootJar` 성공
+- **클래스별 대조: 의도적 차이만 존재** — 인터롭 suite 10개(−42)와 `AuthDtoContractTest`(+18)뿐,
+  그 외 전 클래스 테스트 수 동일. 960 = 984 − 42 + 18
+- `compileTestJava` 는 소스 0 으로 NO-SOURCE — 검증 대상에서 제외
+- Java 잔존 전수 조사: `git ls-files 'backend/**/*.java'` 0건 / 디스크 0건 /
+  `src/test/java` 디렉터리 삭제 (`src/main/java` 는 이미 develop 에서 파일 0)

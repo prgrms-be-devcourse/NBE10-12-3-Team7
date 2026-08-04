@@ -1,0 +1,4 @@
+# k6 원시 출력·중간 산출물은 커밋하지 않는다. 결과는 results/ 아래 요약본만 남긴다.
+results/**/raw/
+results/**/*.log
+*.tmp

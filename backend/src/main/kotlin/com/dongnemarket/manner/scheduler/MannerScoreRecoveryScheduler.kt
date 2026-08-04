@@ -24,7 +24,7 @@ class MannerScoreRecoveryScheduler(
 
         var recovered = 0
         for (mannerScore in candidates) {
-            val memberId = mannerScore.member.id
+            val memberId = mannerScore.member.id!!
             if (mannerScoreService.hasPenaltySince(memberId, since)) {
                 continue // 최근 30일 내 감점 이력이 있으면 이번 배치는 건너뛴다
             }

@@ -155,7 +155,7 @@ class ProductService(
         if (products.isEmpty()) {
             return products
         }
-        val sellerIds = products.mapTo(HashSet()) { it.member.id }
+        val sellerIds = products.mapTo(HashSet()) { it.member.id!! }
         val trustScores = mannerScoreService.getScoresByMemberIds(sellerIds)
         return products.sortedBy { isLowTrustSeller(it, trustScores) }
     }
@@ -287,7 +287,7 @@ class ProductService(
             product.changeTradeStatus(requestedStatus)
             // 매너온도 반영은 커밋 후 별도 트랜잭션에서 처리(best-effort), 상품 상태 변경 자체를 막지 않는다.
             if (requestedStatus == TradeStatus.COMPLETED) {
-                eventPublisher.publishEvent(ProductCompletedEvent(productId, product.member.id))
+                eventPublisher.publishEvent(ProductCompletedEvent(productId, product.member.id!!))
             }
         }
         val imageUrls = getImageUrls(productId)

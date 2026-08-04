@@ -44,7 +44,10 @@ class ChatService(
      * 그 트랜잭션 **바깥**에서(여기서) 이긴 방을 재조회한다 — rollback-only 트랜잭션 재사용을 피한다.
      * 메서드 자체엔 트랜잭션을 걸지 않아 위임 쓰기와 복구 조회가 서로 다른 트랜잭션에서 실행된다.
      */
-    fun createRoom(memberId: Long, productId: Long): ChatRoomDetailResponse {
+    fun createRoom(
+        memberId: Long,
+        productId: Long,
+    ): ChatRoomDetailResponse {
         productService.validateAccessibleProduct(productId)
         try {
             chatRoomCreator.createIfAbsent(memberId, productId)
@@ -52,7 +55,8 @@ class ChatService(
             // 경쟁에서 진 INSERT는 롤백됨. 이긴 방이 이미 존재하므로 아래 조회에서 가져온다.
         }
         val room =
-            chatRoomRepository.findDetailByProductAndBuyer(productId, memberId)
+            chatRoomRepository
+                .findDetailByProductAndBuyer(productId, memberId)
                 .orElseThrow { BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND) }
         return ChatRoomDetailResponse.of(room)
     }
@@ -70,7 +74,11 @@ class ChatService(
         }
         val roomIds = rooms.map { it.id!! }
         val lastByRoom: Map<Long?, ChatMessage> = chatMessageRepository.findLatestPerRoom(roomIds).associateBy { it.chatRoomId }
-        val unreadByRoom: Map<Long, Long> = chatMessageRepository.countUnreadPerRoom(roomIds, memberId).associate { it.roomId to it.unreadCount }
+        val unreadByRoom: Map<Long, Long> =
+            chatMessageRepository.countUnreadPerRoom(roomIds, memberId).associate {
+                it.roomId to
+                    it.unreadCount
+            }
 
         return rooms
             .sortedWith(byRecentActivityDesc(lastByRoom))
@@ -96,9 +104,13 @@ class ChatService(
      * push해, 방을 열 때마다 무의미한 영수증이 쏟아지는 것을 막는다(단조 전진 가드는 엔티티가 이미 보장).
      */
     @Transactional
-    fun markRoomAsRead(memberId: Long, roomId: Long): Long? {
+    fun markRoomAsRead(
+        memberId: Long,
+        roomId: Long,
+    ): Long? {
         val room =
-            chatRoomRepository.findById(roomId)
+            chatRoomRepository
+                .findById(roomId)
                 .orElseThrow { BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND) }
         validateParticipant(room, memberId)
 
@@ -121,14 +133,22 @@ class ChatService(
         compareByDescending<ChatRoom> { activityTimeOf(it, lastByRoom) }
             .thenByDescending { it.id }
 
-    private fun activityTimeOf(room: ChatRoom, lastByRoom: Map<Long?, ChatMessage>): LocalDateTime =
-        (lastByRoom[room.id]?.createdAt ?: room.createdAt)!!
+    private fun activityTimeOf(
+        room: ChatRoom,
+        lastByRoom: Map<Long?, ChatMessage>,
+    ): LocalDateTime = (lastByRoom[room.id]?.createdAt ?: room.createdAt)!!
 
     /** 방의 메시지를 최신순 커서 페이지네이션으로 조회한다. 참여자만 접근 가능. */
     @Transactional(readOnly = true)
-    fun getMessages(memberId: Long, roomId: Long, cursor: Long?, size: Int): ChatMessagePageResponse {
+    fun getMessages(
+        memberId: Long,
+        roomId: Long,
+        cursor: Long?,
+        size: Int,
+    ): ChatMessagePageResponse {
         val room =
-            chatRoomRepository.findById(roomId)
+            chatRoomRepository
+                .findById(roomId)
                 .orElseThrow { BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND) }
         validateParticipant(room, memberId)
 
@@ -149,9 +169,14 @@ class ChatService(
      * 상대 프록시를 한 번 로딩(getStatus)하지만 전송 시점 1회라 비용이 작다.
      */
     @Transactional
-    fun sendMessage(memberId: Long, roomId: Long, content: String): ChatMessageResponse {
+    fun sendMessage(
+        memberId: Long,
+        roomId: Long,
+        content: String,
+    ): ChatMessageResponse {
         val room =
-            chatRoomRepository.findById(roomId)
+            chatRoomRepository
+                .findById(roomId)
                 .orElseThrow { BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND) }
         validateParticipant(room, memberId)
         if (opponentOf(room, memberId).isWithdrawn) {
@@ -163,7 +188,7 @@ class ChatService(
 
         // 수신자(상대방)의 안읽음 배지를 실시간 갱신하도록 신호를 발행한다. 커밋 후(AFTER_COMMIT) 처리되므로
         // 재조회 시 이 메시지가 이미 반영돼 있다. 자기 채팅은 불가라 수신자는 항상 상대방이다(프록시 id 접근).
-        eventPublisher.publishEvent(ChatMessageSentEvent(opponentOf(room, memberId).id))
+        eventPublisher.publishEvent(ChatMessageSentEvent(opponentOf(room, memberId).id!!))
         return ChatMessageResponse.from(saved)
     }
 
@@ -172,20 +197,30 @@ class ChatService(
      * 방이 없으면 `false`(구독 거부).
      */
     @Transactional(readOnly = true)
-    fun isParticipant(memberId: Long, roomId: Long): Boolean =
-        chatRoomRepository.findById(roomId).map { it.isParticipant(memberId) }.orElse(false)
+    fun isParticipant(
+        memberId: Long,
+        roomId: Long,
+    ): Boolean = chatRoomRepository.findById(roomId).map { it.isParticipant(memberId) }.orElse(false)
 
-    private fun validateParticipant(room: ChatRoom, memberId: Long) {
+    private fun validateParticipant(
+        room: ChatRoom,
+        memberId: Long,
+    ) {
         if (!room.isParticipant(memberId)) {
             throw BusinessException(ErrorCode.CHAT_ACCESS_DENIED)
         }
     }
 
-    private fun opponentOf(room: ChatRoom, memberId: Long): Member =
-        if (room.buyerId == memberId) room.seller else room.buyer
+    private fun opponentOf(
+        room: ChatRoom,
+        memberId: Long,
+    ): Member = if (room.buyerId == memberId) room.seller else room.buyer
 
     /** 요청자 본인이 이 방에서 구매자인지 판매자인지. 매너온도 후기 등록 등 구매자 전용 UI 노출 여부 판단용. */
-    private fun viewerRoleOf(room: ChatRoom, memberId: Long): String = if (room.buyerId == memberId) "BUYER" else "SELLER"
+    private fun viewerRoleOf(
+        room: ChatRoom,
+        memberId: Long,
+    ): String = if (room.buyerId == memberId) "BUYER" else "SELLER"
 
     private fun clampSize(size: Int): Int = if (size <= 0) DEFAULT_PAGE_SIZE else minOf(size, MAX_PAGE_SIZE)
 

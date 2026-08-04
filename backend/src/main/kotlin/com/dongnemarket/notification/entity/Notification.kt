@@ -61,7 +61,7 @@ class Notification private constructor(
         protected set
 
     /** 연관 프록시의 식별자만 반환한다(식별자 접근은 프록시 초기화를 유발하지 않음). */
-    val recipientId: Long get() = recipient.id
+    val recipientId: Long get() = recipient.id!!
 
     /**
      * 같은 상품에 새 이벤트가 다시 온 경우의 코얼레싱: 새 row 대신 발생 시각만 현재로 끌어올린다.

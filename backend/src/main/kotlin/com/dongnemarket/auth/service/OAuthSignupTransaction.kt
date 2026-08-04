@@ -46,7 +46,7 @@ class OAuthSignupTransaction(
     fun signUp(identity: OAuthUserIdentity?): Member {
         val dummyPassword = passwordEncoder.encode(generateDummySecret())
         val nickname = generateNickname(identity!!.provider)
-        val member = Member.createSocialUser(identity.email, dummyPassword, nickname)
+        val member = Member.createSocialUser(identity.email!!, dummyPassword, nickname)
         memberRepository.save(member)
         memberSocialAccountRepository.save(
             MemberSocialAccount.of(member, identity.provider, identity.providerUserId),

@@ -1,0 +1,824 @@
+{
+  "uid": "traffic-web-entry",
+  "title": "트래픽 부하 — 웹 진입 계층 (nginx · Next · 네트워크)",
+  "description": "앱·DB 가 아니라 **웹 진입 계층**에 부하를 걸 때 쓰는 화면이다. `GET /` 는 nginx → Next 로만 가고 커넥션 풀을 쓰지 않으므로, 지금까지 모든 회차의 천장이던 커넥션 풀과 무관한 상한을 잰다. 종합 대시보드의 ①앱·③DB 행은 이 경로에서 전부 0 이라 여기 없다. 회차는 상단 testid 로 고른다 — 값이 loadtest/results 의 폴더 이름과 같다.",
+  "tags": [
+    "loadtest",
+    "traffic"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "testid",
+        "label": "회차 (testid)",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(k6_iterations_total, testid)",
+          "refId": "testid"
+        },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "① 부하 — 걸린 것과 소화한 것 (k6)",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 101,
+      "type": "timeseries",
+      "title": "걸린 부하 · 버린 부하",
+      "description": "계단 목표를 실제로 채우고 있는지. **버린 요청이 0 에서 오르면 그 구간은 앱이 아니라 k6 자신의 한계를 잰 것이라 폐기한다.** 이번 시나리오는 응답이 17.5KB 라 k6 가 먼저 막힐 가능성이 특히 높다. k6 는 값이 0 인 카운터를 보내지 않으므로 or vector(0) 으로 0 선을 그린다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "소화한 요청/초",
+          "expr": "sum(rate(k6_iterations_total{testid=~\"$testid\"}[30s]))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "버린 요청/초",
+          "expr": "sum(rate(k6_dropped_iterations_total{testid=~\"$testid\"}[30s])) or vector(0)"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "type": "timeseries",
+      "title": "판정 — 무부하 대비 배수",
+      "description": "회차 요약이 내는 판정값과 같은 지표다(측정 ÷ 그 회차 무부하). 3 배 선을 넘는 지점이 무릎이고, 크로스헤어로 아래 nginx·네트워크 행의 같은 시각을 짚으면 무엇이 먼저 포화됐는지 대응된다. 배수라 단위가 없다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "배수 p95",
+          "expr": "histogram_quantile(0.95, sum(rate(k6_latency_ratio{testid=~\"$testid\"}[30s])))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "배수 p99",
+          "expr": "histogram_quantile(0.99, sum(rate(k6_latency_ratio{testid=~\"$testid\"}[30s])))"
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "type": "timeseries",
+      "title": "클라이언트가 본 응답 · 실패율",
+      "description": "k6 가 잰 `GET /` 응답시간(왼쪽 축, 초)과 실패율(오른쪽 축). 실패율이 오르면 즉시 중단하고 원인부터 본다 — 특히 502·504 는 nginx 는 받았는데 **Next 가 못 따라온** 신호다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "응답 p95",
+          "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds{name=\"web_entry\", testid=~\"$testid\"}[30s])))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "응답 p99",
+          "expr": "histogram_quantile(0.99, sum(rate(k6_http_req_duration_seconds{name=\"web_entry\", testid=~\"$testid\"}[30s])))"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "실패율",
+          "expr": "max(k6_http_req_failed_rate{testid=~\"$testid\"})"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "② nginx — 웹 진입 계층이 받고 있나",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      }
+    },
+    {
+      "id": 201,
+      "type": "timeseries",
+      "title": "연결 상태 (활성 · 읽는 중 · 쓰는 중 · 대기)",
+      "description": "**활성 연결이 늘기만 하고 안 줄면 nginx 뒤(Next)가 못 받는 것이다.** `Writing` 이 쌓이면 응답을 내보내는 중인 연결이 밀린다는 뜻이고, `Waiting`(keep-alive 유휴)이 크면 여유가 있는 것이다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "활성",
+          "expr": "nginx_connections_active"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "읽는 중",
+          "expr": "nginx_connections_reading"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "쓰는 중",
+          "expr": "nginx_connections_writing"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "대기(유휴)",
+          "expr": "nginx_connections_waiting"
+        }
+      ]
+    },
+    {
+      "id": 202,
+      "type": "timeseries",
+      "title": "초당 요청 · 초당 연결 수락",
+      "description": "**nginx 가 받은 것**이다. 위 ①행의 'k6 가 보낸 것'과 차이가 나면 그 사이에서 유실된 것이다. accepted 와 handled 가 벌어지면 nginx 가 연결을 받고도 처리하지 못한 것 — worker_connections 한계 신호다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "초당 요청",
+          "expr": "rate(nginx_http_requests_total[30s])"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "초당 수락(accepted)",
+          "expr": "rate(nginx_connections_accepted[30s])"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "초당 처리(handled)",
+          "expr": "rate(nginx_connections_handled[30s])"
+        }
+      ]
+    },
+    {
+      "id": 203,
+      "type": "timeseries",
+      "title": "수락했지만 처리 못 한 연결 (누적)",
+      "description": "`accepted - handled` 누적 차이. **지속적으로 벌어지면** nginx 가 연결을 떨어뜨리는 것이다 — worker_connections 나 파일 디스크립터 한계 신호다. 0~2 사이의 작은 값은 스크레이프 시점에 처리 중이던 연결이라 정상이다. nginx 를 reload 하면 잠깐 튈 수 있다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "처리 못 한 연결",
+          "expr": "nginx_connections_accepted - nginx_connections_handled"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "nginx 응답 여부(1=정상)",
+          "expr": "nginx_up"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "③ 네트워크 — 이번 회차에 처음 보는 축",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      }
+    },
+    {
+      "id": 301,
+      "type": "timeseries",
+      "title": "VM 네트워크 처리량",
+      "description": "**이번 시나리오의 주요 후보다.** 랜딩 페이지가 17.5KB 라 초당 2,000 요청이면 35MB/s 다. 여기가 평평해지는데 요청은 안 늘면 대역폭이 상한이다. Docker Desktop 이라 맥이 아니라 리눅스 VM 기준이다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "수신",
+          "expr": "sum(rate(node_network_receive_bytes_total{device!~\"lo|erspan.*|gre.*|ip6.*|sit.*|tunl.*\"}[30s]))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "송신",
+          "expr": "sum(rate(node_network_transmit_bytes_total{device!~\"lo|erspan.*|gre.*|ip6.*|sit.*|tunl.*\"}[30s]))"
+        }
+      ]
+    },
+    {
+      "id": 302,
+      "type": "timeseries",
+      "title": "패킷 드롭 · 에러",
+      "description": "**0 이어야 한다.** 오르면 네트워크 스택이 포화된 것이고, 그 구간의 응답시간은 앱 성능이 아니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "수신 드롭",
+          "expr": "sum(rate(node_network_receive_drop_total{device!~\"lo\"}[30s]))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "송신 드롭",
+          "expr": "sum(rate(node_network_transmit_drop_total{device!~\"lo\"}[30s]))"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "수신 에러",
+          "expr": "sum(rate(node_network_receive_errs_total{device!~\"lo\"}[30s]))"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "송신 에러",
+          "expr": "sum(rate(node_network_transmit_errs_total{device!~\"lo\"}[30s]))"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "④ 하드웨어 — 측정이 유효한가",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      }
+    },
+    {
+      "id": 401,
+      "type": "timeseries",
+      "title": "VM CPU 사용률",
+      "description": "**70% 아래면 신뢰, 90% 넘으면 그 구간 폐기.** k6 와 nginx·Next 가 같은 맥을 나눠 쓰므로 이 값에는 부하 생성기 몫이 섞여 있다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "전체 사용률",
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[30s])) * 100)"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "I/O 대기",
+          "expr": "avg(rate(node_cpu_seconds_total{mode=\"iowait\"}[30s])) * 100"
+        }
+      ]
+    },
+    {
+      "id": 402,
+      "type": "timeseries",
+      "title": "VM 메모리",
+      "description": "웹 진입 계층은 메모리를 많이 쓰지 않는다. 여기가 차오르면 Next 프로세스나 k6 쪽을 의심한다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "사용 중",
+          "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "전체",
+          "expr": "node_memory_MemTotal_bytes"
+        }
+      ]
+    },
+    {
+      "id": 403,
+      "type": "timeseries",
+      "title": "VM 부하 · CPU 코어 수",
+      "description": "load1 이 코어 수를 넘으면 실행 대기 중인 작업이 쌓이고 있다는 뜻이다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "load 1분",
+          "expr": "node_load1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "CPU 코어 수",
+          "expr": "count(node_cpu_seconds_total{mode=\"idle\"})"
+        }
+      ]
+    }
+  ]
+}

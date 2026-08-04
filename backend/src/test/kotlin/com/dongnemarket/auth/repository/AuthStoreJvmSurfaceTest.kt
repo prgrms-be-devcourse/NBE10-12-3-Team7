@@ -175,12 +175,20 @@ class AuthStoreJvmSurfaceTest {
                 .containsExactly("test")
         }
 
+        /**
+         * [InMemoryLoginAttemptRepository] 만 예외로 2개다 — 계약 테스트가 시간을 통제할 수 있게
+         * `Clock` 기본값 생성자를 가지며, Kotlin 이 전 파라미터 기본값 규칙으로 무인자 생성자를
+         * 추가 생성한다. 스프링은 `Clock` 빈이 없으면 무인자 쪽으로 폴백해 `systemUTC` 로 뜬다.
+         */
         @Test
-        fun `구현체는 public 생성자 하나로 주입된다`() {
+        fun `구현체는 public 생성자로 주입된다`() {
             for (type in IMPLEMENTATIONS) {
                 val constructors = type.declaredConstructors.filter { !it.isSynthetic }
-                assertThat(constructors).describedAs("%s 의 생성자", type.simpleName).hasSize(1)
-                assertThat(Modifier.isPublic(constructors[0].modifiers)).isTrue()
+                val expected = if (type == InMemoryLoginAttemptRepository::class.java) 2 else 1
+                assertThat(constructors).describedAs("%s 의 생성자", type.simpleName).hasSize(expected)
+                for (constructor in constructors) {
+                    assertThat(Modifier.isPublic(constructor.modifiers)).isTrue()
+                }
             }
         }
 

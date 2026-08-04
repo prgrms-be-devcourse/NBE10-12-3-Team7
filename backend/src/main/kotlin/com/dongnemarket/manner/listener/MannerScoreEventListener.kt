@@ -30,9 +30,11 @@ class MannerScoreEventListener(
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     fun handleReportStatusChanged(event: ReportStatusChangedEvent) {
         // 신고가 그 사이 삭제(취소)됐으면 반영할 것이 없다.
-        val report = reportRepository.findById(event.reportId()).orElse(null) ?: return
+        // reportId 는 이벤트 계약상 nullable 이지만(영속 전 Report 로도 발행될 수 있다),
+        // 이 리스너는 AFTER_COMMIT 에 돌아 항상 영속된 신고를 받는다. findById 가 non-null 을 요구해 여기서 확인한다.
+        val report = reportRepository.findById(checkNotNull(event.reportId)).orElse(null) ?: return
 
-        when (event.newStatus()) {
+        when (event.newStatus) {
             ReportStatus.COMPLETED -> {
                 val targetMemberId = report.resolveTargetMemberId()
                 val severity = mannerScoreService.severityOf(report.reason.name)
@@ -48,7 +50,7 @@ class MannerScoreEventListener(
                 }
             }
             ReportStatus.REJECTED -> {
-                mannerScoreService.applyFalseReportPenalty(report.reporter.id, report.id!!)
+                mannerScoreService.applyFalseReportPenalty(report.reporter.id!!, report.id!!)
             }
             else -> {}
         }

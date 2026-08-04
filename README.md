@@ -16,6 +16,7 @@
 | `mobile/` | Kotlin + Compose Android 앱 | [mobile/mobile.md](mobile/mobile.md) |
 | `agent/` | Python + LangGraph AI 에이전트 서비스 | [agent/agent.md](agent/agent.md) |
 | `infra/` | 배포 자원 (온프레미스 · AWS) | [infra/infra.md](infra/infra.md) |
+| `e2e/` | Playwright e2e 테스트 (자체 격리 환경 포함) | [e2e/e2e.md](e2e/e2e.md) |
 
 그 밖에:
 

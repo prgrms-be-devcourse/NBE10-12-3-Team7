@@ -1,0 +1,140 @@
+# e2e 전용 환경. 로컬과 CI가 이 파일 하나를 똑같이 쓴다.
+#
+#   npm run e2e:up        기동 (이미지가 있으면 수십 초)
+#   npm run e2e:rebuild   develop 갱신 후 백엔드 이미지 재빌드
+#   npm run e2e:down      정리
+#
+# 설계 의도
+#  - 포트를 dev(3306/6379/8080/3000)와 어긋나게 뒀다. 개발 서버를 켜둔 채로 e2e 를 돌릴 수 있어야
+#    팀원이 실제로 돌린다. 겹치면 "e2e 돌리려고 개발환경 내리기"가 되고, 그러면 아무도 안 돌린다.
+#  - 볼륨 대신 tmpfs. 지난 실행 데이터가 남으면 "어제는 됐는데"가 생긴다. 컨테이너를 내리면 증발한다.
+#  - backend/ 와 frontend/ 소스는 건드리지 않는다(코틀린 마이그레이션 중 충돌 회피).
+#    필요한 설정은 전부 환경변수로 주입한다.
+#
+# 이름을 명시해 dev 의 compose 프로젝트(dongnemarket)와 절대 섞이지 않게 한다.
+name: dongne-e2e
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: dongne-e2e-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root1234
+      MYSQL_DATABASE: dongne_market
+      MYSQL_USER: dongne
+      MYSQL_PASSWORD: dongne1234
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot1234"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  redis:
+    image: redis:7-alpine
+    container_name: dongne-e2e-redis
+    ports:
+      - "6380:6379"
+    # 영속화를 끈다 — e2e 의 TTL 데이터는 남을 이유가 없고, 남으면 오염된다.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # 진짜 SMTP 서버. 백엔드의 SmtpEmailSender 가 그대로 동작하므로 프로덕션 코드를 고칠 필요가 없다.
+  # 받은 메일은 http://localhost:8025 에서 눈으로도 확인된다.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: dongne-e2e-mailpit
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI + REST API
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ../backend
+    container_name: dongne-e2e-backend
+    ports:
+      - "18080:8080"
+      # 프론트(13000)도 여기서 연다. frontend 가 network_mode 로 이 컨테이너의
+      # 네트워크를 공유하기 때문에 포트를 frontend 쪽에 쓸 수 없다 — 아래 frontend 주석 참고.
+      - "13000:3000"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+
+      # 아래 대부분은 application.yml 이 이미 ${} 로 외부화해둔 값이라 그대로 주입하면 된다.
+      DB_URL: jdbc:mysql://mysql:3306/dongne_market?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      DB_USERNAME: dongne
+      DB_PASSWORD: dongne1234
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      # MAIL_USERNAME 은 SMTP 인증용이자 **발신자 주소**다
+      # (SmtpEmailSender 가 spring.mail.username 을 setFrom 에 그대로 쓴다).
+      # 비워두면 jakarta.mail 이 "Empty address" 로 거절해 발송이 500 이 된다 — 유효한 주소를 넣는다.
+      MAIL_USERNAME: e2e@dongnemarket.local
+      MAIL_PASSWORD: "" # smtp.auth=false 라 실제로 쓰이지 않는다
+
+      # 여기부터는 application.yml 에 하드코딩돼 있어 relaxed binding 으로 덮는다.
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "false" # base 가 true — Mailpit 은 인증을 안 받는다
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "false"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop # dev 는 update — 기동마다 새 스키마로
+
+      APP_SEED_DEMO: "false" # 데모 데이터가 목록·검색 단언을 흔든다
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health # readiness 확인용
+
+      # e2e 전용 — 워커 4개가 같은 IP 라 기본 60req/10s 로는 429 가 난다. dev·prod 로 복사 금지.
+      RATE_LIMIT_CAPACITY: "100000"
+      CORS_ALLOWED_ORIGINS: http://localhost:13000
+      FRONTEND_BASE_URL: http://localhost:13000
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mailpit: { condition: service_healthy }
+    # healthcheck 를 여기 걸지 않는다: eclipse-temurin:21-jre 에 curl/wget 이 없고,
+    # 넣으려면 backend/Dockerfile 을 고쳐야 한다(마이그레이션 중이라 무침투 유지).
+    # 준비 확인은 호스트의 scripts/wait-for-env.mjs 가 담당한다.
+
+  # UI 스펙(브라우저)용. API 스펙만 돌릴 때는 Next 빌드 비용을 치르지 않도록 프로파일 뒤에 둔다.
+  #   docker compose -f docker-compose.e2e.yml --profile ui up -d
+  #
+  # ⚠️ BACKEND_ORIGIN 을 환경변수로 넣어도 먹지 않는다.
+  #    next.config.ts 의 rewrites() 는 `output: "standalone"` 빌드 시점에 값이 구워져서,
+  #    런타임 환경변수로는 바뀌지 않는다(NEXT_PUBLIC_* 과 같은 문제). 기본값인
+  #    http://localhost:8080 이 그대로 박혀 있어 컨테이너 안에서 ECONNREFUSED 가 난다.
+  #
+  #    그래서 network_mode 로 backend 의 네트워크 네임스페이스를 공유한다.
+  #    이러면 프론트 컨테이너 안의 localhost:8080 이 곧 백엔드라, 구워진 기본값이 그대로 맞아떨어진다.
+  #    이미지를 다시 빌드할 필요가 없다는 것이 이 방식의 장점이다.
+  #
+  #    정공법은 frontend/Dockerfile 에 ARG BACKEND_ORIGIN 을 추가해 빌드 인자로 넘기는 것인데,
+  #    프론트 소스를 건드려야 해서 FE 담당과 합의가 필요하다. (README 「알려진 제약」 참고)
+  frontend:
+    build:
+      context: ../frontend
+    container_name: dongne-e2e-frontend
+    # network_mode 를 쓰면 이 서비스에 ports 를 선언할 수 없다 → backend 쪽에 13000 을 열어뒀다.
+    network_mode: "service:backend"
+    environment:
+      NEXT_PUBLIC_WS_ORIGIN: http://localhost:18080
+    depends_on:
+      backend: { condition: service_started }
+    profiles: ["ui"]

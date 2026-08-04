@@ -78,15 +78,27 @@ class AuthStoreContractTest {
             assertThat(repository.getFailureCount("a@b.com")).isEqualTo(3L)
         }
 
-        /** 최초 실패에만 윈도우를 잡는다 — 매번 연장하면 차단이 풀리지 않는다. */
+        /**
+         * 최초 실패에만 윈도우를 잡는다 — 매번 연장하면 차단이 풀리지 않는다.
+         * 시간 경과가 본질인 검증이라 시스템 시계 대신 [MutableClock] 으로 타임라인을 직접 굴린다.
+         * t=120ms 정확 경계의 포함 여부는 계약에 명시돼 있지 않으므로 119ms/121ms 로만 판정한다.
+         */
         @Test
         fun `윈도우 내 반복 실패는 만료 시각을 연장하지 않는다`() {
-            repository.incrementFailure("a@b.com", Duration.ofMillis(120))
-            val firstTtl = Duration.between(Instant.now(), Instant.now().plusMillis(120))
-            repository.incrementFailure("a@b.com", Duration.ofMinutes(10))
+            val clock = MutableClock(Instant.parse("2026-01-01T00:00:00Z"))
+            val repository = InMemoryLoginAttemptRepository(clock)
 
+            repository.incrementFailure("a@b.com", Duration.ofMillis(120))
+
+            clock.advance(Duration.ofMillis(60))
+            repository.incrementFailure("a@b.com", Duration.ofMinutes(10))
             assertThat(repository.getFailureCount("a@b.com")).isEqualTo(2L)
-            assertThat(firstTtl).isLessThanOrEqualTo(Duration.ofMillis(120))
+
+            clock.advance(Duration.ofMillis(59)) // t=119ms — 최초 윈도우 안
+            assertThat(repository.getFailureCount("a@b.com")).isEqualTo(2L)
+
+            clock.advance(Duration.ofMillis(2)) // t=121ms — 두 번째 호출이 연장했다면 2가 남는다
+            assertThat(repository.getFailureCount("a@b.com")).isZero()
         }
 
         @Test

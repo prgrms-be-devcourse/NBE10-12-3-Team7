@@ -2,6 +2,7 @@ package com.dongnemarket.auth.repository
 
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Repository
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -15,7 +16,9 @@ import java.util.concurrent.ConcurrentHashMap
  */
 @Repository
 @Profile("test")
-class InMemoryLoginAttemptRepository : LoginAttemptRepository {
+class InMemoryLoginAttemptRepository(
+    private val clock: Clock = Clock.systemUTC(),
+) : LoginAttemptRepository {
     private data class Entry(
         val count: Long,
         val expiresAt: Instant,
@@ -28,7 +31,7 @@ class InMemoryLoginAttemptRepository : LoginAttemptRepository {
     @Synchronized
     override fun getFailureCount(email: String?): Long {
         val entry = store[email]
-        if (entry == null || entry.isExpired(Instant.now())) {
+        if (entry == null || entry.isExpired(Instant.now(clock))) {
             return 0L
         }
         return entry.count
@@ -39,7 +42,7 @@ class InMemoryLoginAttemptRepository : LoginAttemptRepository {
         email: String?,
         lockWindow: Duration?,
     ) {
-        val now = Instant.now()
+        val now = Instant.now(clock)
         val existing = store[email]
         if (existing == null || existing.isExpired(now)) {
             store[email] = Entry(1L, now.plus(lockWindow))
