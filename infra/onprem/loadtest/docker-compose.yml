@@ -43,6 +43,7 @@ services:
       #
       # ⚠️ `k6 inspect` 로는 이게 먹었는지 확인할 수 없다 — inspect 는 __ENV 를 채우지 않아
       # 항상 기본 계단을 보여준다. 확인하려면 `k6 run` 으로 돌려야 한다.
+      REGION_CODE: ${REGION_CODE:-}
       SMOKE: ${SMOKE:-}
       SOAK_VU: ${SOAK_VU:-}
       SOAK_RATE: ${SOAK_RATE:-}

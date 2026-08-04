@@ -33,6 +33,18 @@ import {
 import { screenProductList } from './lib/screens.js';
 import { pickArrivalStages } from './lib/stages.js';
 
+/**
+ * 동네 필터 회차 스위치. 값을 주면 목록 조회에 `regionCodes` 가 붙는다.
+ *
+ * 1회차(필터 없음)와 **딱 이것 하나만** 달라야 두 곡선의 차이를 필터 탓으로 돌릴 수 있다.
+ * 그래서 시나리오 파일을 새로 만들지 않고 같은 파일에 스위치를 뒀다 — 파일이 갈리면
+ * 계단·think time·판정 기준이 조금씩 어긋나고, 그러면 비교가 성립하지 않는다.
+ *
+ * 실제 화면에서는 로그인 + 동네 설정한 사용자만 이 요청을 보낸다. 여기서는 같은 HTTP 요청을
+ * 재현할 뿐이라 **인증 오버헤드는 빠져 있다** — F-01 은 DB 비용 문제라 오히려 격리된다.
+ */
+const REGION_CODE = __ENV.REGION_CODE || '';
+
 export const options = {
   scenarios: {
     arrival: {
@@ -64,22 +76,36 @@ export const options = {
  * 컨테이너 경유 고정비(약 7ms)는 부하와 무관한 덧셈인데 판정은 곱셈이라 여유를 갉아먹는다.
  */
 export function setup() {
-  const baseline = measureBaseline([
-    { key: 'list', url: `${BASE_URL}/api/products?size=30` },
-  ]);
+  const probes = [{ key: 'list', url: `${BASE_URL}/api/products?size=30` }];
+
+  // 동네 필터 회차(REGION_CODE 지정)는 **필터를 건 무부하**를 따로 잰다.
+  // 판정 분모를 필터 무부하로 두는 이유: 그래야 1회차와 같은 잣대(그 경로의 무부하 대비
+  // 몇 배)가 되어 **동시성 축의 악화만** 비교된다. 필터의 고정 비용은 아래 두 기준선의
+  // 비(比)로 따로 나오므로 섞지 않는다.
+  if (REGION_CODE) {
+    probes.push({ key: 'filtered', url: `${BASE_URL}/api/products?size=30&regionCodes=${REGION_CODE}` });
+  }
+
+  const baseline = measureBaseline(probes);
+  const judged = REGION_CODE ? baseline.filtered : baseline.list;
+
   console.log(
-    `이 회차 무부하 기준선: 목록 ${baseline.list.toFixed(1)}ms ` +
-    `(허용선 ${(baseline.list * ALLOWED_RATIO).toFixed(1)}ms = ${ALLOWED_RATIO}배)`
+    `이 회차 무부하 기준선: 목록 ${baseline.list.toFixed(1)}ms` +
+    (REGION_CODE
+      ? ` / 동네필터(${REGION_CODE}) ${baseline.filtered.toFixed(1)}ms ` +
+        `→ 필터 고정 비용 ${(baseline.filtered / baseline.list).toFixed(2)}배`
+      : '') +
+    ` (판정 허용선 ${(judged * ALLOWED_RATIO).toFixed(1)}ms = ${ALLOWED_RATIO}배)`
   );
-  return { baseline };
+  return { baseline, judged };
 }
 
 // 반복 1회 = 사람 1명이 상품 목록 화면에 한 번 들어오는 것. 그게 전부다.
 // think time 을 넣지 않는다 — 다음 행동이 없고, 도착률 자체가 부하 모델이기 때문이다.
 // 여기서 sleep 을 하면 VU 만 더 오래 붙잡아 같은 도착률에 더 많은 VU 가 필요해질 뿐이다.
 export default function (data) {
-  const res = screenProductList();
-  recordRatio(res, data.baseline.list);
+  const res = screenProductList(REGION_CODE ? { regionCode: REGION_CODE } : {});
+  recordRatio(res, data.judged);
 }
 
 export function handleSummary(data) {
@@ -103,6 +129,10 @@ export function handleSummary(data) {
     };
   }
 
+  // 판정 분모. 필터 회차는 **필터를 건 무부하**가 분모다(setup 주석 참고).
+  const judged = (data.setup_data && data.setup_data.judged) || base;
+  const filtered = data.setup_data && data.setup_data.baseline && data.setup_data.baseline.filtered;
+
   const pathCost = base - BASELINE_MS.list;
   const pass = ratio['p(95)'] < ALLOWED_RATIO && failed < 0.01;
 
@@ -113,9 +143,13 @@ export function handleSummary(data) {
   const lines = [
     '',
     '── 1단계 판정 ──────────────────────────────────────',
+    `  측정 대상     ${REGION_CODE ? `동네 필터 (regionCodes=${REGION_CODE})` : '필터 없는 목록'}`,
     `  무부하 기준   목록 ${base.toFixed(1)} ms (이 회차 setup 에서 실측)`,
+    ...(filtered ? [
+      `                동네필터 ${filtered.toFixed(1)} ms → **필터 고정 비용 ${(filtered / base).toFixed(2)} 배**`,
+    ] : []),
     `  참고          호스트 curl ${BASELINE_MS.list} ms → 경로 비용 ${pathCost >= 0 ? '+' : ''}${pathCost.toFixed(1)} ms`,
-    `  허용선        무부하의 ${ALLOWED_RATIO} 배 (= ${(base * ALLOWED_RATIO).toFixed(1)} ms)`,
+    `  허용선        무부하의 ${ALLOWED_RATIO} 배 (= ${(judged * ALLOWED_RATIO).toFixed(1)} ms)`,
     '',
     `  배수 p95      ${ratio['p(95)'].toFixed(2)} 배   ← 판정은 이 값으로 한다`,
     `  배수 p99      ${ratio['p(99)'].toFixed(2)} 배`,

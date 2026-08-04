@@ -75,7 +75,7 @@ base_url="$(q "${COMPOSE[@]}" config | grep -E '^\s+BASE_URL:' | head -1 | sed '
   echo "| 스크립트 버전 | \`${git_rev}\`${git_dirty} |"
   echo "| 측정 위치 | $([ "$STACK_HERE" = 1 ] && echo '맥 로컬 (오버레이 적용 — Wi-Fi 를 타지 않는다)' || echo '원격 (LAN 너머 — 사용자 실측)') |"
   echo "| BASE_URL | \`${base_url}\` |"
-  echo "| 시나리오 스위치 | SMOKE=\`${SMOKE:-}\` SOAK_RATE=\`${SOAK_RATE:-}\` ALLOWED_RATIO=\`${ALLOWED_RATIO:-기본 3}\` |"
+  echo "| 시나리오 스위치 | SMOKE=\`${SMOKE:-}\` SOAK_RATE=\`${SOAK_RATE:-}\` ALLOWED_RATIO=\`${ALLOWED_RATIO:-기본 3}\` REGION_CODE=\`${REGION_CODE:-없음}\` |"
 } > "$CONDITIONS"
 
 if [ "$STACK_HERE" = 1 ]; then
