@@ -14,6 +14,7 @@ import com.dongnemarket.region.repository.RegionRepository
 import jakarta.persistence.EntityManager
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
+import org.hibernate.SessionFactory
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -1113,6 +1114,66 @@ class ProductRepositoryTest {
 
         assertThat(products).containsExactly(visibleProduct)
         assertThat(products).doesNotContain(completedProduct, deletedSellerProduct, suspendedSellerProduct)
+    }
+
+    /**
+     * 목록 조회 후 지역 필드를 읽을 때 상품 수만큼 SELECT 가 따라붙지 않는지 확인한다.
+     *
+     * `Product.regionRef` 는 `LAZY` 라 [com.dongnemarket.product.dto.ProductSummaryResponse] 가
+     * `regionCode`·`regionName`·`regionFullName` 을 읽는 순간 프록시가 깨진다. 지역이 상품마다
+     * 다르면 그만큼 SELECT 가 늘어난다(N+1). `Region` 의 `@BatchSize` 가 대기 중인 프록시를 모아
+     * `where id in (...)` 한 번으로 가져오므로, 상품 수와 무관하게 쿼리 수가 일정해야 한다.
+     *
+     * `@BatchSize` 를 지우면 목록 1 + 지역 5 = 6 건이 되어 이 테스트가 깨진다.
+     */
+    @Test
+    fun `목록 조회 후 지역 필드를 읽어도 상품 수만큼 추가 조회가 발생하지 않는다`() {
+        val member = memberRepository.save(Member.createUser("region-batch@example.com", "encodedPassword", "판매자"))
+        val category = categoryRepository.save(Category("지역배치페치"))
+        val regions =
+            listOf(
+                saveGangnamWithDong(),
+                saveSeochoWithDong(),
+                saveMapoWithDong(),
+                saveSongpaWithDong(),
+                saveYongsanWithDong(),
+            )
+        regions.forEachIndexed { index, region ->
+            productRepository.save(
+                Product.create(
+                    member,
+                    category,
+                    "지역 배치 상품 $index",
+                    "지역 배치 상품 설명 $index",
+                    BigDecimal.valueOf(10000L * (index + 1)),
+                    region,
+                ),
+            )
+        }
+        productRepository.flush()
+        entityManager.clear()
+
+        val statistics = entityManager.entityManagerFactory.unwrap(SessionFactory::class.java).statistics
+        statistics.isStatisticsEnabled = true
+        statistics.clear()
+
+        val products =
+            productRepository.findAll(
+                ProductSpecification.categoryList(category.id),
+                Sort.by(Sort.Direction.DESC, "id"),
+            )
+        // ProductSummaryResponse.from 이 읽는 것과 같은 필드들 — 여기서 지역 프록시가 깨진다.
+        products.forEach { product ->
+            product.regionCode
+            product.regionName
+            product.regionFullName
+        }
+
+        val queryCount = statistics.prepareStatementCount
+
+        assertThat(products).hasSize(regions.size)
+        // 목록 1 + 지역 배치 1. 상품이 5건이든 30건이든 이 값은 늘지 않는다.
+        assertThat(queryCount).isLessThanOrEqualTo(2)
     }
 
     private fun saveSeoul(): Region =
