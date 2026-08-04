@@ -62,6 +62,12 @@ services:
       LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}
       ABORT_RATIO: ${ABORT_RATIO:-}
       CEILING: ${CEILING:-}
+      # 복합 트래픽 구성비(s03). 합이 100 이 아니어도 되지만 회차마다 기록된다.
+      W_GUEST: ${W_GUEST:-}
+      W_MEMBER: ${W_MEMBER:-}
+      W_DETAIL: ${W_DETAIL:-}
+      POLL: ${POLL:-}
+      POLL_RATE: ${POLL_RATE:-}
       CPU_LIMIT_PCT: ${CPU_LIMIT_PCT:-}
       SMOKE: ${SMOKE:-}
       SOAK_VU: ${SOAK_VU:-}
