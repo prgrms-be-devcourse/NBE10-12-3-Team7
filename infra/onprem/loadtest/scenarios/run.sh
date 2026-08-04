@@ -125,16 +125,19 @@ echo "| k6 → Prometheus | \`${RW_URL:-없음}\` · testid=\`$(basename "$RUN_D
 # ── CPU 워처 ──────────────────────────────────────────────────────────────
 # **부하 생성기가 앱을 왜곡하기 전에 멈춘다.** 맥 한 대에서 돌 때만 켠다.
 #
-# k6 는 호스트 CPU 를 읽을 수 없으므로 밖에서 감시해야 한다. VM 전체 CPU 가 임계(기본 70%)를
+# k6 는 호스트 CPU 를 읽을 수 없으므로 밖에서 감시해야 한다. VM 전체 CPU 가 임계(기본 85%)를
 # **연속 3회** 넘으면 k6 를 중단한다 — 한 번 튄 값에 회차가 끝나지 않도록 연속 조건을 둔다.
 #
-# 왜 90%(폐기 기준)가 아니라 70% 인가: 90% 는 "이미 오염된 뒤"라 그 구간을 버리게 된다.
+# 왜 90%(폐기 기준)가 아니라 85% 인가: 90% 는 "이미 오염된 뒤"라 그 구간을 버리게 된다.
 # 실제로 2회차에서 무릎을 넘긴 뒤 10분을 CPU 90% 로 돌아 통째로 폐기했다.
-# 지금까지 찾은 무릎이 전부 57~68% 에서 나왔으므로 70% 는 무릎을 놓치지 않는다.
 #
-# k6 컨테이너에 CPU 상한(K6_CPUS, 기본 3코어 = 30%)이 걸려 있으므로, 전체가 70% 라는 것은
-# **앱+DB 가 최소 40% 를 확보한 상태**라는 뜻이다.
-CPU_LIMIT="${CPU_LIMIT_PCT:-70}"
+# 처음에 70% 로 뒀다가 85% 로 올렸다. s03 회차에서 docker stats 로 컨테이너별 CPU 를 분리해
+# 보니 **k6 는 전체의 3% 밖에 쓰지 않았다**(앱 19% · MySQL 31%). 즉 70% 캡은 앱을 보호한 것이
+# 아니라 측정을 일찍 끊은 것에 가까웠다 — 그 회차는 무릎 직후 CPU 75% 에서 잘렸다.
+#
+# k6 컨테이너에 CPU 상한(K6_CPUS, 기본 3코어 = 30%)이 걸려 있으므로, 전체가 85% 라도
+# **앱+DB 가 최소 55% 를 확보한 상태**다. 실측에서는 k6 가 3% 밖에 안 썼다.
+CPU_LIMIT="${CPU_LIMIT_PCT:-85}"
 WATCHER_PID=""
 if [ "$STACK_HERE" = 1 ]; then
   (
@@ -149,8 +152,8 @@ if [ "$STACK_HERE" = 1 ]; then
         over=$((over + 1))
         if [ "$over" -ge 3 ]; then
           echo "⚠️ VM CPU ${cpu}% — 임계 ${CPU_LIMIT}% 를 연속 3회 넘어 회차를 중단한다." \
-            | tee -a "$RUN_DIR/raw/k6.log"
-          echo "cpu-watcher" > "$RUN_DIR/raw/.stopped-by"
+            >> "$RUN_DIR/raw/k6.log"
+          echo "cpu-watcher ${cpu}%" > "$RUN_DIR/raw/.stopped-by"
           docker ps -q --filter "ancestor=grafana/k6:latest" | xargs -r docker stop >/dev/null 2>&1
           exit 0
         fi
@@ -158,7 +161,7 @@ if [ "$STACK_HERE" = 1 ]; then
         over=0
       fi
     done
-  ) &
+  ) >> "$RUN_DIR/raw/watcher.log" 2>&1 &
   WATCHER_PID=$!
   echo "| 중단 조건 | 배수 ${ABORT_RATIO:-10}배 초과 **또는** VM CPU ${CPU_LIMIT}% 연속 초과 · k6 CPU 상한 ${K6_CPUS:-3}코어 |" >> "$CONDITIONS"
 fi
@@ -173,7 +176,7 @@ if [ "$STACK_HERE" = 1 ]; then
       ts="$(date +%H:%M:%S)"
       docker stats --no-stream --format "${ts},{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.NetIO}}" 2>/dev/null
       sleep 5
-    done ) > "$RUN_DIR/raw/docker-stats.csv" &
+    done ) > "$RUN_DIR/raw/docker-stats.csv" 2>/dev/null &
   STATS_PID=$!
 fi
 
