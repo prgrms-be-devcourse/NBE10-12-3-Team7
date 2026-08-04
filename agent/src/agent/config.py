@@ -1,5 +1,7 @@
 """에이전트 설정. 환경변수(.env)에서 로드한다. 값의 단일 소스."""
 
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,5 +32,28 @@ class Settings(BaseSettings):
     raw_dir: str = "data/raw"
     cache_dir: str = ".cache"             # 필터 판정 캐시(멱등·resumable)
 
+    # --- 관측성 (LangSmith 개발 트레이싱) ---
+    langsmith_tracing: bool = False       # true + 키 있으면 그래프 실행이 LangSmith로 트레이스됨
+    langsmith_api_key: str = ""           # smith.langchain.com 발급 키 — .env에만, 커밋 금지
+    langsmith_project: str = "marketon-legal-agent"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+
 
 settings = Settings()
+
+
+def _export_langsmith_env() -> None:
+    """pydantic이 .env에서 읽은 LangSmith 설정을 os.environ으로 넘긴다.
+
+    langsmith SDK는 Settings 객체가 아니라 환경변수를 읽는다. 트레이싱 플래그와
+    키가 둘 다 있을 때만 켜서, 키 없이 켜졌을 때 SDK가 헛되이 전송을 시도하지 않게 한다.
+    """
+    if not (settings.langsmith_tracing and settings.langsmith_api_key):
+        return
+    os.environ["LANGSMITH_TRACING"] = "true"
+    os.environ["LANGSMITH_API_KEY"] = settings.langsmith_api_key
+    os.environ["LANGSMITH_PROJECT"] = settings.langsmith_project
+    os.environ["LANGSMITH_ENDPOINT"] = settings.langsmith_endpoint
+
+
+_export_langsmith_env()
