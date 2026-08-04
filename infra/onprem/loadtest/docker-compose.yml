@@ -11,6 +11,17 @@ name: dongnemarket-loadtest
 services:
   k6:
     image: grafana/k6:latest
+    # k6 가 쓸 수 있는 코어를 묶는다. 맥 한 대에서 앱·MySQL 과 CPU 를 나눠 쓰기 때문이다.
+    #
+    # 왜 상한을 거는가: 상한이 없으면 "전체 CPU 70%" 를 봐도 그중 k6 가 얼마인지 알 수 없다.
+    # cAdvisor 는 Docker Desktop 에서 컨테이너별로 갈리지 않아(name 라벨 없음) 측정할 수단도 없다.
+    # 3 코어로 묶으면 **k6 몫이 30% 이하로 보장**되므로, 전체가 70% 여도 앱+DB 가 최소 40% 를
+    # 확보한 상태임을 계산 없이 알 수 있다.
+    #
+    # k6 가 이 상한으로 목표 도착률을 못 채우면 `dropped_iterations` 로 즉시 드러난다 —
+    # **앱의 한계(pending 급증)와 부하 생성기의 한계(dropped 급증)가 지표로 구분된다.**
+    # 노트북처럼 앱과 자원을 안 나누는 환경에서는 K6_CPUS 를 크게 주거나 비우면 된다.
+    cpus: ${K6_CPUS:-3}
     volumes:
       - ./scripts:/scripts:ro
       - ./results:/results
@@ -51,6 +62,7 @@ services:
       LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}
       ABORT_RATIO: ${ABORT_RATIO:-}
       CEILING: ${CEILING:-}
+      CPU_LIMIT_PCT: ${CPU_LIMIT_PCT:-}
       SMOKE: ${SMOKE:-}
       SOAK_VU: ${SOAK_VU:-}
       SOAK_RATE: ${SOAK_RATE:-}

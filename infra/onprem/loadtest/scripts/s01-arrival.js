@@ -64,6 +64,14 @@ const LOGIN = __ENV.LOGIN === 'true';
 const LOGIN_ACCOUNTS = Number(__ENV.LOGIN_ACCOUNTS || 300);
 
 export const options = {
+  // 응답 본문을 버린다. **이 시나리오는 본문을 쓰지 않는다** — expectOk 는 상태 코드만 보고
+  // 판정은 res.timings 만 쓴다. 버리면 k6 의 파싱·할당·GC 가 사라져 같은 CPU 로 더 높은
+  // 도착률을 만들 수 있다(초당 600 진입이면 9.4KB × 1,200 = 11MB/s 를 파싱하고 있었다).
+  // 맥 한 대에서 앱과 CPU 를 나눠 쓰므로 부하 생성기를 가볍게 하는 것이 곧 측정 여유가 된다.
+  //
+  // ⚠️ 본문이 필요한 요청은 개별로 되살린다 — lib/auth.js 의 로그인(accessToken 추출)이
+  //    responseType: 'text' 를 명시하는 이유다. s00-ratelimit 은 본문을 검증하므로 이 옵션을 쓰지 않는다.
+  discardResponseBodies: true,
   scenarios: {
     arrival: {
       executor: 'ramping-arrival-rate',
