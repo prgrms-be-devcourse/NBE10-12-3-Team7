@@ -13,6 +13,7 @@
 | LLM | Ollama 로컬 모델 **qwen3:4b** (`langchain-ollama`) |
 | API | FastAPI + uvicorn |
 | 테스트 | pytest (LLM은 목킹 · 라이브 호출은 `-m live`로 분리) |
+| 관측성 | LangSmith 개발 트레이싱 (`.env`로 on/off) |
 
 ## 폴더 구조
 
@@ -79,6 +80,10 @@ pytest -m live    # 실제 Ollama qwen3:4b 호출 테스트만 (모델 기동 �
 - **temperature 0.1** — 결정성.
 - **num_predict 512** — 느린 CPU 추론에서 최악 응답시간을 bound.
 - **keep_alive 30m** — 콜드 로드 제거.
+
+## 관측성 (LangSmith 개발 트레이싱)
+
+`.env`에 `LANGSMITH_TRACING=true` + `LANGSMITH_API_KEY`를 넣으면 그래프 실행이 [smith.langchain.com](https://smith.langchain.com)으로 트레이스된다. LangGraph 노드(scope→retrieve→generate→finalize)는 자동으로 잡히고, NIM 생성 호출은 `llm.py`의 `wrap_openai`로 감싸 nested로 잡힌다. 키가 없으면 자동으로 꺼진 상태(no-op)라 평소 실행·테스트에 영향 없다.
 
 ## 주의
 

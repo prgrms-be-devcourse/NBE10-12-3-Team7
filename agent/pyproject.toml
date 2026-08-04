@@ -16,6 +16,8 @@ dependencies = [
     "langchain-text-splitters>=0.3",
     "openai>=1.40",          # NVIDIA NIM (OpenAI 호환) 필터 클라이언트
     "typer>=0.12",           # ingest CLI
+    # --- 관측성 ---
+    "langsmith>=0.1",        # 개발 트레이싱 (LangGraph 자동 트레이스 + wrap_openai)
 ]
 
 [project.optional-dependencies]
