@@ -8,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "10s",
   "time": {
     "from": "now-30m",
@@ -1215,7 +1215,7 @@
       "id": 502,
       "type": "timeseries",
       "title": "판정 — 무부하 대비 배수",
-      "description": "**이 그룹의 핵심.** 회차 요약이 내는 판정값과 같은 지표다(측정 ÷ 그 회차 무부하). 3 배 선을 넘는 지점이 무릎이고, 크로스헤어로 위쪽 DB·하드웨어 행의 같은 시각을 짚으면 무엇이 먼저 포화됐는지 대응된다. 배수라 단위가 없다 — 초로 두면 안 된다.",
+      "description": "**이 그룹의 핵심.** 회차 요약이 내는 판정값과 같은 지표다(측정 ÷ 그 회차 무부하). 3 배 선을 넘는 지점이 무릎이고, 크로스헤어로 위쪽 DB·하드웨어 행의 같은 시각을 짚으면 무엇이 먼저 포화됐는지 대응된다. 배수라 단위가 없다 — 초로 두면 안 된다. 네이티브 히스토그램에서 **구간별로** 분위수를 계산한다 — k6 의 기본 게이지(_p95)는 테스트 시작부터 누적한 값이라 부하가 올라가도 단조 감소해 계단별 판정에 쓸 수 없다.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1272,7 +1272,7 @@
             "uid": "prometheus"
           },
           "legendFormat": "배수 p95",
-          "expr": "k6_latency_ratio_p95{testid=~\"$testid\"}"
+          "expr": "histogram_quantile(0.95, sum(rate(k6_latency_ratio{testid=~\"$testid\"}[30s])))"
         },
         {
           "refId": "B",
@@ -1281,7 +1281,7 @@
             "uid": "prometheus"
           },
           "legendFormat": "배수 p99",
-          "expr": "k6_latency_ratio_p99{testid=~\"$testid\"}"
+          "expr": "histogram_quantile(0.99, sum(rate(k6_latency_ratio{testid=~\"$testid\"}[30s])))"
         }
       ]
     },
@@ -1289,7 +1289,7 @@
       "id": 503,
       "type": "timeseries",
       "title": "클라이언트가 본 목록 응답",
-      "description": "k6 가 잰 `/api/products` 응답. 위 ①행의 서버측 지연과의 **차이가 큐 대기 시간**이다 — 서버는 빠른데 여기가 느리면 앱 안이 아니라 앞에서 밀린 것이다. k6 는 시간 지표를 초 단위로 보낸다(실측 확인).",
+      "description": "k6 가 잰 `/api/products` 응답. 위 ①행의 서버측 지연과의 **차이가 큐 대기 시간**이다 — 서버는 빠른데 여기가 느리면 앱 안이 아니라 앞에서 밀린 것이다. k6 는 시간 지표를 초 단위로 보낸다(실측 확인). 네이티브 히스토그램에서 **구간별로** 분위수를 계산한다 — k6 의 기본 게이지(_p95)는 테스트 시작부터 누적한 값이라 부하가 올라가도 단조 감소해 계단별 판정에 쓸 수 없다.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1330,7 +1330,7 @@
             "uid": "prometheus"
           },
           "legendFormat": "p95",
-          "expr": "k6_http_req_duration_p95{name=\"products_list\", testid=~\"$testid\"}"
+          "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds{name=\"products_list\", testid=~\"$testid\"}[30s])))"
         },
         {
           "refId": "B",
@@ -1339,7 +1339,7 @@
             "uid": "prometheus"
           },
           "legendFormat": "p99",
-          "expr": "k6_http_req_duration_p99{name=\"products_list\", testid=~\"$testid\"}"
+          "expr": "histogram_quantile(0.99, sum(rate(k6_http_req_duration_seconds{name=\"products_list\", testid=~\"$testid\"}[30s])))"
         }
       ]
     },
