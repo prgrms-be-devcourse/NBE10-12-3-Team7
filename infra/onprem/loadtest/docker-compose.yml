@@ -50,6 +50,7 @@ services:
       # 관리자 계정 해시를 복사해 만들어져서 적는 순간 기존 노출을 한 번 더 늘린다.
       LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}
       ABORT_RATIO: ${ABORT_RATIO:-}
+      CEILING: ${CEILING:-}
       SMOKE: ${SMOKE:-}
       SOAK_VU: ${SOAK_VU:-}
       SOAK_RATE: ${SOAK_RATE:-}

@@ -128,10 +128,40 @@ export const WRITE_LADDER = [
   { duration: '30s', target: 0 },
 ];
 
+// 쓰기 상한 탐색 계단. `CEILING=true` 로 고른다.
+//
+// 쓰기 1회차에서 초당 600 까지 무릎이 없었으므로(pending 0, 락 대기 0, VM CPU 39%)
+// 낮은 계단은 건너뛰고 400 부터 올린다. **버티는지만 보면 되므로 유지는 30초**다.
+//
+// 데이터 누적을 크게 걱정했는데 1회차 실측으로 제약이 풀렸다 — 상품이 10만에서 22만으로
+// 두 배가 되는 동안 등록이 오히려 빨라졌다(14ms → 6.2ms). INSERT 는 테이블 크기에 거의
+// 둔감하다(인덱스 트리 깊이가 로그로 늘 뿐이다). 그래서 쓰기 회차는 계단을 더 올려도 된다.
+//
+// ⚠️ **1400 에서 멈추는 이유**: 초당 600 에서 VM CPU 가 39% 였고 외삽하면 1400 근처가 90%
+// (우리가 정한 폐기 기준)다. 이 CPU 에는 k6 몫이 섞여 있어 그 위로는 앱이 아니라 **호스트가
+// 먼저 막힌다.** 거기까지 문제가 없으면 "맥 한 대에서는 쓰기 상한을 못 찾는다"로 결론짓고
+// 다음 단계로 넘어간다 — 앱의 진짜 상한은 부하 생성기를 노트북으로 옮겨야 보인다.
+export const WRITE_CEILING = [
+  { duration: '30s', target: 400 },
+  { duration: '30s', target: 400 },
+  { duration: '30s', target: 600 },
+  { duration: '30s', target: 600 },
+  { duration: '30s', target: 800 },
+  { duration: '30s', target: 800 },
+  { duration: '30s', target: 1000 },
+  { duration: '30s', target: 1000 },
+  { duration: '30s', target: 1200 },
+  { duration: '30s', target: 1200 },
+  { duration: '30s', target: 1400 },
+  { duration: '30s', target: 1400 },
+  { duration: '30s', target: 0 },
+];
+
 /** 쓰기 계단 선택. 읽기의 pickArrivalStages() 와 같은 규칙이다. */
 export function pickWriteStages() {
   if (__ENV.SMOKE === 'true') return ARRIVAL_SMOKE;
   if (__ENV.SOAK_RATE) return arrivalSoak(Number(__ENV.SOAK_RATE));
+  if (__ENV.CEILING === 'true') return WRITE_CEILING;
   return WRITE_LADDER;
 }
 
