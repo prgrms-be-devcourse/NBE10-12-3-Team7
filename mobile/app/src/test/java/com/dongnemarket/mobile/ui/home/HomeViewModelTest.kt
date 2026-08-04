@@ -591,6 +591,71 @@ class HomeViewModelTest {
         coVerify(exactly = 2) { productRepository.getProducts(any(), isNull(), any()) }
     }
 
+    // ─────────────────────── 화면 복귀 ───────────────────────
+
+    @Test
+    fun `다른 화면에서 돌아오면 목록을 다시 받아 새 상품이 나타난다`() = runTest {
+        // Given: 홈에 상품이 1건 있는 상태에서 사용자가 상품을 등록하고 돌아왔다
+        coEvery { memberRepository.getMyLocations() } returns Result.success(내동네_강남)
+        coEvery { categoryRepository.getCategories() } returns Result.success(카테고리_4종)
+        coEvery { productRepository.getProducts(any(), any(), any()) } returns Result.success(
+            ProductPage(items = listOf(상품(11L)), nextCursor = 11L, hasNext = false),
+        )
+        val viewModel = 홈화면을_연다()
+        // 그 사이 서버에는 방금 등록한 상품(99)이 생겼다
+        coEvery { productRepository.getProducts(any(), any(), any()) } returns Result.success(
+            ProductPage(items = listOf(상품(99L), 상품(11L)), nextCursor = 11L, hasNext = false),
+        )
+
+        // When: 홈이 다시 화면 앞으로 나온다
+        viewModel.onScreenResumed()
+
+        // Then: 이게 없으면 방금 올린 물건이 목록에 없어 "등록이 실패한 것"으로 보인다.
+        // 실제로는 서버에 잘 저장돼 있는데도. (2026-08-04 에뮬 실기 검수에서 발견)
+        val state = viewModel.uiState.value as HomeUiState.Success
+        assertEquals(listOf(99L, 11L), state.products.map { it.productId })
+    }
+
+    @Test
+    fun `첫 진입이 끝나기 전의 복귀 신호는 중복 조회를 만들지 않는다`() = runTest {
+        // Given: 동네 응답을 붙잡아 첫 로드를 진행 중으로 묶어 둔다
+        val 동네응답게이트 = CompletableDeferred<Unit>()
+        coEvery { memberRepository.getMyLocations() } coAnswers {
+            동네응답게이트.await()
+            Result.success(내동네_강남)
+        }
+        coEvery { categoryRepository.getCategories() } returns Result.success(카테고리_4종)
+        coEvery { productRepository.getProducts(any(), any(), any()) } returns Result.success(첫페이지_마지막)
+        val viewModel = 홈화면을_연다()
+
+        // When: 첫 진입 직후 Compose 가 ON_RESUME 을 보낸다(실제로 이 순서로 일어난다)
+        viewModel.onScreenResumed()
+        동네응답게이트.complete(Unit)
+
+        // Then: 첫 로드 1회뿐이어야 한다. 겹쳐 부르면 같은 목록을 두 번 받는다.
+        coVerify(exactly = 1) { productRepository.getProducts(any(), isNull(), any()) }
+    }
+
+    @Test
+    fun `복귀해도 사용자가 고른 카테고리 칩은 그대로 유지된다`() = runTest {
+        // Given: 카테고리 필터를 걸어 둔 상태
+        coEvery { memberRepository.getMyLocations() } returns Result.success(내동네_강남)
+        coEvery { categoryRepository.getCategories() } returns Result.success(카테고리_4종)
+        coEvery { productRepository.getProducts(any(), any(), any()) } returns Result.success(첫페이지_마지막)
+        coEvery { productRepository.searchProducts(any(), any(), any()) } returns
+            Result.success(listOf(상품(31L)))
+        val viewModel = 홈화면을_연다()
+        viewModel.onCategorySelect(2L)
+
+        // When
+        viewModel.onScreenResumed()
+
+        // Then: 복귀가 필터를 초기화하면 사용자는 방금 고른 칩이 풀린 이유를 알 수 없다.
+        // 화면 전체를 Loading 으로 되돌리지 않고 목록만 다시 받는 이유가 이것이다.
+        val state = viewModel.uiState.value as HomeUiState.Success
+        assertEquals(2L, state.selectedCategoryId)
+    }
+
     // ─────────────────────── 테스트 데이터 ───────────────────────
 
     private val 내동네_강남 = listOf(

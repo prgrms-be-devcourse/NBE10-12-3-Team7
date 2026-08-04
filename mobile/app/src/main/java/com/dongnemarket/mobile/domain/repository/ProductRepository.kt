@@ -1,5 +1,6 @@
 package com.dongnemarket.mobile.domain.repository
 
+import com.dongnemarket.mobile.domain.model.NewProduct
 import com.dongnemarket.mobile.domain.model.Product
 import com.dongnemarket.mobile.domain.model.ProductDetail
 import com.dongnemarket.mobile.domain.model.ProductPage
@@ -66,4 +67,30 @@ interface ProductRepository {
      * → "삭제된 상품입니다" 정도로 부드럽게 안내한다. 숨김 상품은 403 이다.
      */
     suspend fun getProductDetail(productId: Long): Result<ProductDetail>
+
+    /**
+     * 상품 등록. **호출은 하나지만 서버 왕복은 N+1 번**이다(이미지 N장 + 등록 1번).
+     *
+     * 백엔드에 "이미지까지 한 번에" 받는 엔드포인트가 없어서 이렇게 갈라져 있다:
+     * `POST /api/products/images` 로 파일을 올려 경로를 받고,
+     * 그 경로들을 `POST /api/products` 본문에 실어 보낸다.
+     * 이 순서와 실패 처리를 화면이 알 필요는 없으므로 **구현체가 통째로 감춘다.**
+     *
+     * 구현체가 화면 대신 하는 일:
+     * - 사진을 **리사이즈·재압축**한다(원본 그대로면 서버 5MB 한도에 걸린다).
+     * - **한 장씩** 올린다(`max-request-size` 도 5MB 라 여러 장을 한 요청에 담을 수 없다).
+     *
+     * ⚠️ **중간에 실패하면 이미 올라간 파일은 서버에 남는다.**
+     * 업로드 취소·삭제 API 가 없어서 앱이 치울 방법이 없다. 재시도하면 처음부터 다시 올라가고
+     * 앞서 올린 것들은 어느 상품에도 붙지 못한 고아 파일이 된다(백엔드 관리자 정리 기능의 대상이다).
+     * 그래서 **업로드 전에 입력값을 전부 검증**해, 다 올린 뒤 제목이 비어서 400 나는 일이 없게 한다.
+     *
+     * @param onImageUploaded 사진 한 장이 올라갈 때마다 `(올린 수, 전체 수)` 로 불린다.
+     *   진행률 표시용이며 **호출 코루틴 위에서 그대로 실행**된다(별도 스레드로 던지지 않는다).
+     * @return 등록된 상품의 `productId`. 이 값으로 곧바로 상세 화면에 보낼 수 있다.
+     */
+    suspend fun createProduct(
+        newProduct: NewProduct,
+        onImageUploaded: (uploaded: Int, total: Int) -> Unit = { _, _ -> },
+    ): Result<Long>
 }

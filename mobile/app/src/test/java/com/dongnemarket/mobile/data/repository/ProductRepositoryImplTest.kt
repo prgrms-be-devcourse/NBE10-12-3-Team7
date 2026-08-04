@@ -1,16 +1,23 @@
 package com.dongnemarket.mobile.data.repository
 
+import com.dongnemarket.mobile.data.image.ImageCompressor
 import com.dongnemarket.mobile.data.remote.ProductApiService
 import com.dongnemarket.mobile.data.remote.dto.ApiEnvelope
+import com.dongnemarket.mobile.data.remote.dto.ProductCreateRequestDto
+import com.dongnemarket.mobile.data.remote.dto.ProductImageUploadResponse
 import com.dongnemarket.mobile.data.remote.dto.ProductPageResponse
 import com.dongnemarket.mobile.data.remote.dto.ProductResponse
 import com.dongnemarket.mobile.data.remote.dto.ProductSummaryResponse
 import com.dongnemarket.mobile.domain.model.AppError
+import com.dongnemarket.mobile.domain.model.NewProduct
 import com.dongnemarket.mobile.domain.model.TradeStatus
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.slot
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -33,7 +40,14 @@ import java.math.BigDecimal
 class ProductRepositoryImplTest {
 
     private val api = mockk<ProductApiService>()
-    private val repository = ProductRepositoryImpl(api)
+
+    /**
+     * 압축기는 `Bitmap`·`ContentResolver` 를 쓰는 Android 프레임워크 코드라 JVM 에서 실행되지 않는다.
+     * 등록 테스트는 "압축 결과가 이 바이트다" 라고 가정하고 **그 뒤의 조립**(파트 이름·요청 순서·
+     * 실패 전파)을 검증한다. 압축 자체의 정확성은 실기 검수의 몫이다.
+     */
+    private val imageCompressor = mockk<ImageCompressor>()
+    private val repository = ProductRepositoryImpl(api, imageCompressor)
 
     // ────────────────────────── 홈 목록: 응답 매핑 ──────────────────────────
 
@@ -524,5 +538,213 @@ class ProductRepositoryImplTest {
         thumbnailUrl = thumbnailUrl,
         imageUrls = imageUrls,
         hidden = hidden,
+    )
+
+    // ══════════════════════ 상품 등록: 2단계 조립 ══════════════════════
+    //
+    // 조회 함수들과 달리 등록은 `apiCall {}` 한 줄이 아니다.
+    // 서버에 "이미지까지 한 번에" 받는 엔드포인트가 없어서 저장소가 두 요청을 순서대로 엮는다:
+    //   ① POST /api/products/images  (장당 1회)  → 경로 수집
+    //   ② POST /api/products         (수집한 경로 전부)
+    // 그 조립이 여기서 검증하는 대상이다.
+
+    @Test
+    fun `등록하면 사진을 한 장씩 올린 뒤 그 경로로 상품을 만든다`() = runTest {
+        // Given: 사진 2장. 압축기는 장마다 다른 바이트를 준다(순서 섞임을 잡기 위해).
+        coEvery { imageCompressor.compressToJpeg("uri-A") } returns Result.success(byteArrayOf(1))
+        coEvery { imageCompressor.compressToJpeg("uri-B") } returns Result.success(byteArrayOf(2))
+        coEvery { api.uploadImages(any()) } returnsMany listOf(
+            envelope(ProductImageUploadResponse(listOf("/api/products/images/a.jpg"))),
+            envelope(ProductImageUploadResponse(listOf("/api/products/images/b.jpg"))),
+        )
+        val 등록요청 = slot<ProductCreateRequestDto>()
+        coEvery { api.createProduct(capture(등록요청)) } returns
+            envelope(productResponse(productId = 501L))
+
+        // When
+        val result = repository.createProduct(신규상품(imageUris = listOf("uri-A", "uri-B")))
+
+        // Then: 업로드는 **장당 한 번씩** 나가야 한다.
+        // 서버의 max-request-size 가 max-file-size 와 똑같이 5MB 라, 여러 장을 한 요청에 담으면
+        // 파일 검증에 닿기도 전에 요청 자체가 잘린다.
+        coVerify(exactly = 2) { api.uploadImages(any()) }
+        assertEquals(
+            listOf("/api/products/images/a.jpg", "/api/products/images/b.jpg"),
+            등록요청.captured.imageUrls,
+        )
+        assertEquals(501L, result.getOrNull())
+    }
+
+    @Test
+    fun `업로드 파트 이름은 files 이고 타입은 image_jpeg 다`() = runTest {
+        // Given
+        coEvery { imageCompressor.compressToJpeg(any()) } returns Result.success(byteArrayOf(1, 2, 3))
+        val 파트 = slot<List<MultipartBody.Part>>()
+        coEvery { api.uploadImages(capture(파트)) } returns
+            envelope(ProductImageUploadResponse(listOf("/api/products/images/a.jpg")))
+        coEvery { api.createProduct(any()) } returns envelope(productResponse())
+
+        // When
+        repository.createProduct(신규상품(imageUris = listOf("uri-A")))
+
+        // Then: 서버는 @RequestPart("files") 로 받는다.
+        // 이름이 다르면 404 도 400 도 아니라 "파일이 비었다"는 검증 실패로 나타나 원인 추적이 어렵다.
+        val 헤더 = 파트.captured.single().headers?.get("Content-Disposition")
+        assertTrue("파트 이름이 files 여야 한다: $헤더", 헤더!!.contains("name=\"files\""))
+
+        // 서버가 image/jpeg·png·gif·webp 화이트리스트로 검사하므로
+        // 타입을 비워 두면(application/octet-stream) 무조건 거부된다.
+        assertEquals("image/jpeg", 파트.captured.single().body.contentType().toString())
+    }
+
+    @Test
+    fun `사진 한 장이 올라갈 때마다 진행률을 알려 준다`() = runTest {
+        // Given: 사진 3장
+        coEvery { imageCompressor.compressToJpeg(any()) } returns Result.success(byteArrayOf(1))
+        coEvery { api.uploadImages(any()) } returns
+            envelope(ProductImageUploadResponse(listOf("/img.jpg")))
+        coEvery { api.createProduct(any()) } returns envelope(productResponse())
+        val 진행률 = mutableListOf<Pair<Int, Int>>()
+
+        // When
+        repository.createProduct(신규상품(imageUris = listOf("A", "B", "C"))) { done, total ->
+            진행률 += done to total
+        }
+
+        // Then: 사진 여러 장은 수 초가 걸린다. 진행률이 없으면 화면이 멈춘 것처럼 보인다.
+        assertEquals(listOf(1 to 3, 2 to 3, 3 to 3), 진행률)
+    }
+
+    @Test
+    fun `업로드가 중간에 실패하면 상품을 만들지 않는다`() = runTest {
+        // Given: 2장 중 두 번째 업로드가 실패한다
+        coEvery { imageCompressor.compressToJpeg(any()) } returns Result.success(byteArrayOf(1))
+        coEvery { api.uploadImages(any()) } returns
+            envelope(ProductImageUploadResponse(listOf("/api/products/images/a.jpg"))) andThenThrows
+            IOException("업로드 중 연결 끊김")
+
+        // When
+        val result = repository.createProduct(신규상품(imageUris = listOf("A", "B")))
+
+        // Then: 여기서 상품을 만들어 버리면 **사진 한 장이 빠진 상품**이 등록된다.
+        // 사용자는 다시 올릴 방법이 없고(수정 화면 없음) 목록에는 반쪽짜리 상품이 남는다.
+        coVerify(exactly = 0) { api.createProduct(any()) }
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is AppError.Network)
+    }
+
+    @Test
+    fun `사진 압축에 실패하면 아무것도 올리지 않고 멈춘다`() = runTest {
+        // Given: 사용자가 고른 사진이 그 사이 삭제됐거나 읽을 수 없다
+        coEvery { imageCompressor.compressToJpeg("A") } returns Result.success(byteArrayOf(1))
+        coEvery { imageCompressor.compressToJpeg("B") } returns
+            Result.failure(IOException("사진에 접근할 수 없습니다."))
+        coEvery { api.uploadImages(any()) } returns
+            envelope(ProductImageUploadResponse(listOf("/img.jpg")))
+        coEvery { api.createProduct(any()) } returns envelope(productResponse())
+
+        // When
+        val result = repository.createProduct(신규상품(imageUris = listOf("A", "B")))
+
+        // Then: A 는 이미 올라갔지만 상품은 만들지 않는다(고아 파일은 남는다 — 지울 API 가 없다).
+        coVerify(exactly = 1) { api.uploadImages(any()) }
+        coVerify(exactly = 0) { api.createProduct(any()) }
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `올린 사진 수와 받은 경로 수가 다르면 등록을 중단한다`() = runTest {
+        // Given: 한 장을 올렸는데 서버가 경로를 두 개 줬다(계약 위반)
+        coEvery { imageCompressor.compressToJpeg(any()) } returns Result.success(byteArrayOf(1))
+        coEvery { api.uploadImages(any()) } returns
+            envelope(ProductImageUploadResponse(listOf("/a.jpg", "/b.jpg")))
+        coEvery { api.createProduct(any()) } returns envelope(productResponse())
+
+        // When
+        val result = repository.createProduct(신규상품(imageUris = listOf("A")))
+
+        // Then: 개수가 어긋난 채 진행하면 thumbnailIndex 가 엉뚱한 사진을 가리키게 된다.
+        // "대표로 고른 사진과 다른 사진이 목록에 뜨는" 조용한 오류다.
+        coVerify(exactly = 0) { api.createProduct(any()) }
+        assertTrue(result.exceptionOrNull() is AppError.EmptyBody)
+    }
+
+    @Test
+    fun `설명을 비워도 null 이 아니라 빈 문자열로 실린다`() = runTest {
+        // Given
+        coEvery { imageCompressor.compressToJpeg(any()) } returns Result.success(byteArrayOf(1))
+        coEvery { api.uploadImages(any()) } returns
+            envelope(ProductImageUploadResponse(listOf("/img.jpg")))
+        val 등록요청 = slot<ProductCreateRequestDto>()
+        coEvery { api.createProduct(capture(등록요청)) } returns envelope(productResponse())
+
+        // When
+        repository.createProduct(신규상품(description = ""))
+
+        // Then: 서버 ProductService 는 title·price·imageUrls 만 검증한 뒤
+        // `Product.create(..., request.description!!, ...)` 로 description 을 **검증 없이 역참조**한다.
+        // 즉 null 이면 400 이 아니라 NPE → 500 이다.
+        // 게다가 앱 Json 은 explicitNulls=false 라 null 필드는 키째 사라져 그 경로를 정확히 밟는다.
+        assertEquals("", 등록요청.captured.description)
+    }
+
+    @Test
+    fun `제목과 설명의 앞뒤 공백은 보내기 전에 다듬는다`() = runTest {
+        // Given
+        coEvery { imageCompressor.compressToJpeg(any()) } returns Result.success(byteArrayOf(1))
+        coEvery { api.uploadImages(any()) } returns
+            envelope(ProductImageUploadResponse(listOf("/img.jpg")))
+        val 등록요청 = slot<ProductCreateRequestDto>()
+        coEvery { api.createProduct(capture(등록요청)) } returns envelope(productResponse())
+
+        // When: 키보드 자동완성이 뒤에 공백을 붙이는 일이 흔하다
+        repository.createProduct(신규상품(title = "  닌텐도 스위치  ", description = "  깨끗해요  "))
+
+        // Then: 지역 코드와 달리 제목은 서버가 완전 비교하지 않으므로 다듬어도 안전하다
+        assertEquals("닌텐도 스위치", 등록요청.captured.title)
+        assertEquals("깨끗해요", 등록요청.captured.description)
+    }
+
+    @Test
+    fun `상품 생성이 실패하면 사진은 올라갔어도 실패로 돌아온다`() = runTest {
+        // Given: 업로드는 다 됐는데 마지막 등록에서 서버가 거부했다
+        coEvery { imageCompressor.compressToJpeg(any()) } returns Result.success(byteArrayOf(1))
+        coEvery { api.uploadImages(any()) } returns
+            envelope(ProductImageUploadResponse(listOf("/img.jpg")))
+        coEvery { api.createProduct(any()) } throws HttpException(
+            Response.error<Any>(
+                404,
+                """{"status":404,"error":"CATEGORY_NOT_FOUND","message":"카테고리를 찾을 수 없습니다."}"""
+                    .toResponseBody("application/json".toMediaType()),
+            ),
+        )
+
+        // When
+        val result = repository.createProduct(신규상품())
+
+        // Then: 실패는 예외가 아니라 Result 로 온다(다른 함수들과 같은 규약).
+        val error = result.exceptionOrNull()
+        assertTrue(error is AppError.Api)
+        assertEquals(404, (error as AppError.Api).status)
+        assertEquals("카테고리를 찾을 수 없습니다.", error.userMessage)
+    }
+
+    /** 등록 입력 픽스처. 인자로 준 것만 바꿔 "그 값 때문에 결과가 달라졌다"를 분명히 한다. */
+    private fun 신규상품(
+        title: String = "닌텐도 스위치",
+        description: String = "작년에 샀어요",
+        price: BigDecimal = BigDecimal("240000"),
+        categoryId: Long = 1L,
+        regionCode: String = "1168010300",
+        imageUris: List<String> = listOf("uri-A"),
+        thumbnailIndex: Int = 0,
+    ) = NewProduct(
+        title = title,
+        description = description,
+        price = price,
+        categoryId = categoryId,
+        regionCode = regionCode,
+        imageUris = imageUris,
+        thumbnailIndex = thumbnailIndex,
     )
 }

@@ -94,3 +94,46 @@ data class ProductResponse(
     val imageUrls: List<String> = emptyList(),
     val hidden: Boolean = false,
 )
+
+/**
+ * `POST /api/products/images` 의 `data`.
+ *
+ * 보낸 파일 순서대로 저장 경로가 돌아온다(`/api/products/images/{uuid}.jpg`).
+ * **여기서 받은 문자열을 가공하지 말고 그대로** [ProductCreateRequestDto.imageUrls] 에 실어야 한다 —
+ * 서버가 이 값을 그대로 DB 에 저장하기 때문이다(절대 URL 로 바꿔 보내면 그 URL 이 저장된다).
+ */
+@Serializable
+data class ProductImageUploadResponse(
+    val imageUrls: List<String> = emptyList(),
+)
+
+/**
+ * `POST /api/products` 요청 본문.
+ *
+ * ### 모든 필드가 non-null 인 이유
+ * 서버 DTO(`ProductCreateRequest`)는 전부 nullable 이지만, **앱이 null 을 보내면 안 된다.**
+ * `ProductService` 는 `title`·`price`·`imageUrls` 만 검증한 뒤
+ * `Product.create(..., request.description!!, ...)` 로 **description 을 검증 없이 역참조**한다.
+ * 즉 description 이 없으면 400 이 아니라 **NPE → 500** 이다.
+ *
+ * 게다가 앱의 Json 설정은 `explicitNulls = false` 라 **null 필드는 키째 사라진다** →
+ * "설명을 안 적었을 뿐인데 서버가 500" 이라는 경로를 실제로 밟게 된다.
+ * 그래서 설명 미입력은 null 이 아니라 **빈 문자열**로 보낸다.
+ *
+ * @param price `BigDecimal` 을 문자열이 아닌 **JSON 숫자**로 실어야 한다 → [BigDecimalSerializer].
+ * @param regionCode 지역 코드. ⚠️ 서버가 `level == 3`(읍면동)만 받는다.
+ *   시/도(1)·시군구(2) 코드를 보내면 400 `INVALID_INPUT_VALUE` 다.
+ * @param imageUrls 업로드 응답에서 받은 경로들. 1~5개, 빈 문자열 불가.
+ * @param thumbnailIndex `0 ≤ index < imageUrls.size`. 벗어나면 400.
+ */
+@Serializable
+data class ProductCreateRequestDto(
+    val categoryId: Long,
+    val title: String,
+    val description: String,
+    @Serializable(with = BigDecimalSerializer::class)
+    val price: BigDecimal,
+    val regionCode: String,
+    val imageUrls: List<String>,
+    val thumbnailIndex: Int,
+)

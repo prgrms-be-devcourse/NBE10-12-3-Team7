@@ -11,6 +11,7 @@ import com.dongnemarket.mobile.ui.chat.ChatListScreen
 import com.dongnemarket.mobile.ui.chat.ChatRoomScreen
 import com.dongnemarket.mobile.ui.home.HomeScreen
 import com.dongnemarket.mobile.ui.login.LoginScreen
+import com.dongnemarket.mobile.ui.productcreate.ProductCreateScreen
 import com.dongnemarket.mobile.ui.productdetail.ProductDetailScreen
 
 /**
@@ -52,6 +53,22 @@ fun MarketOnNavHost(
                     navController.navigate(MarketOnRoutes.productDetail(productId))
                 },
                 onChatTabClick = { navController.navigate(MarketOnRoutes.CHAT_LIST) },
+                onCreateClick = { navController.navigate(MarketOnRoutes.PRODUCT_CREATE) },
+            )
+        }
+
+        // 상품 등록 — Unit 5
+        composable(MarketOnRoutes.PRODUCT_CREATE) {
+            ProductCreateScreen(
+                // 등록에 성공하면 방금 만든 상품 상세로 보낸다.
+                onCreated = { productId ->
+                    navController.navigate(MarketOnRoutes.productDetail(productId)) {
+                        // 등록 화면을 스택에서 빼서 상세에서 뒤로가기 하면 홈으로 가게 한다.
+                        // 안 빼면 이미 등록을 마친 폼으로 되돌아가고, 거기서 다시 누르면 중복 등록이다.
+                        popUpTo(MarketOnRoutes.PRODUCT_CREATE) { inclusive = true }
+                    }
+                },
+                onBackClick = { navController.popBackStack() },
             )
         }
 

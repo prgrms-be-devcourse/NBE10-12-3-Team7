@@ -1,12 +1,19 @@
 package com.dongnemarket.mobile.data.repository
 
+import com.dongnemarket.mobile.data.image.ImageCompressor
 import com.dongnemarket.mobile.data.mapper.toDomain
 import com.dongnemarket.mobile.data.remote.ProductApiService
 import com.dongnemarket.mobile.data.remote.apiCall
+import com.dongnemarket.mobile.data.remote.dto.ProductCreateRequestDto
+import com.dongnemarket.mobile.domain.model.AppError
+import com.dongnemarket.mobile.domain.model.NewProduct
 import com.dongnemarket.mobile.domain.model.Product
 import com.dongnemarket.mobile.domain.model.ProductDetail
 import com.dongnemarket.mobile.domain.model.ProductPage
 import com.dongnemarket.mobile.domain.repository.ProductRepository
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import javax.inject.Inject
 
 /**
@@ -20,6 +27,8 @@ import javax.inject.Inject
 // 싱글톤 스코프는 ProductRepositoryModule 의 @Binds @Singleton 에서 한 번만 지정한다.
 class ProductRepositoryImpl @Inject constructor(
     private val api: ProductApiService,
+    /** 등록에서만 쓴다. 사진 원본을 서버 한도 안으로 굽는 책임. */
+    private val imageCompressor: ImageCompressor,
 ) : ProductRepository {
 
     override suspend fun getProducts(
@@ -56,6 +65,77 @@ class ProductRepositoryImpl @Inject constructor(
     override suspend fun getProductDetail(productId: Long): Result<ProductDetail> =
         apiCall { api.getProductDetail(productId) }.map { it.toDomain() }
 
+    /**
+     * 등록 — 이 클래스에서 유일하게 `apiCall {}` 한 줄로 끝나지 않는 함수다.
+     * 서버 왕복이 **이미지 N번 + 등록 1번**이고 그 순서를 화면이 알 필요는 없으므로 여기서 조립한다.
+     *
+     * 흐름:
+     * ```
+     * for (사진 in 목록)  압축 → POST /api/products/images (1장) → 경로 수집 → 진행률 통지
+     * POST /api/products (수집한 경로 전부)
+     * ```
+     *
+     * ### 한 장씩 올리는 이유
+     * 서버의 `max-request-size` 가 `max-file-size` 와 똑같이 5MB 라,
+     * 여러 장을 한 요청에 담으면 **파일 검증에 닿기도 전에** 요청이 통째로 잘린다.
+     *
+     * ### 실패 시 앞선 업로드를 되돌리지 않는 이유
+     * 되돌릴 API 가 없다. 삭제 엔드포인트는 상품 단위(`DELETE /api/products/{id}`)뿐이고
+     * 아직 상품이 만들어지지 않았다. 그래서 **되돌리는 대신 실패 확률을 낮추는 쪽**을 택했다 —
+     * 입력 검증을 업로드 **전에** 끝내서, 다 올린 다음 제목이 비어 400 나는 경로를 없앤다.
+     *
+     * @see ProductRepository.createProduct 계약과 주의사항 전문
+     */
+    override suspend fun createProduct(
+        newProduct: NewProduct,
+        onImageUploaded: (uploaded: Int, total: Int) -> Unit,
+    ): Result<Long> {
+        val total = newProduct.imageUris.size
+        val uploadedUrls = mutableListOf<String>()
+
+        newProduct.imageUris.forEachIndexed { index, uriString ->
+            // getOrElse 안의 return 은 이 람다가 아니라 createProduct 를 빠져나간다(비지역 반환).
+            // forEachIndexed·getOrElse 가 둘 다 inline 이라 가능하다 — 첫 실패에서 즉시 중단된다.
+            val jpegBytes = imageCompressor.compressToJpeg(uriString).getOrElse { cause ->
+                return Result.failure(AppError.Unknown(cause))
+            }
+
+            val part = MultipartBody.Part.createFormData(
+                // 서버가 @RequestPart("files") 로 받는다. 이 이름이 다르면 400 이 아니라
+                // "파일이 비었다"는 검증 실패로 나타나 원인을 찾기 어렵다.
+                name = "files",
+                // 파일 이름은 서버가 저장에 쓰지 않지만(UUID 로 새로 만든다) 멀티파트 규격상 필요하다.
+                filename = "product_$index.jpg",
+                body = jpegBytes.toRequestBody(JPEG_MEDIA_TYPE),
+            )
+
+            val response = apiCall { api.uploadImages(listOf(part)) }.getOrElse { cause ->
+                return Result.failure(cause)
+            }
+            uploadedUrls += response.imageUrls
+            onImageUploaded(index + 1, total)
+        }
+
+        // 서버가 한 장에 여러 경로를 주거나(가공 파생본) 아무것도 주지 않으면 계약 위반이다.
+        // 개수가 어긋난 채 진행하면 thumbnailIndex 가 엉뚱한 사진을 가리키게 된다.
+        if (uploadedUrls.size != total) return Result.failure(AppError.EmptyBody())
+
+        return apiCall {
+            api.createProduct(
+                ProductCreateRequestDto(
+                    categoryId = newProduct.categoryId,
+                    title = newProduct.title.trim(),
+                    // ⚠️ null 을 보내면 서버가 검증 없이 역참조해 500 이 난다 → 빈 문자열을 보낸다.
+                    description = newProduct.description.trim(),
+                    price = newProduct.price,
+                    regionCode = newProduct.regionCode,
+                    imageUrls = uploadedUrls,
+                    thumbnailIndex = newProduct.thumbnailIndex,
+                ),
+            )
+        }.map { it.productId }
+    }
+
     private companion object {
         /** 서버 지역 필터 상한. 3개 이상 보내면 400 이 떨어진다. */
         const val MAX_REGION_FILTER = 2
@@ -63,6 +143,13 @@ class ProductRepositoryImpl @Inject constructor(
         /** 서버 기본 페이지 크기. size 가 0 이하일 때 서버가 쓰는 값과 같아야 한다(계약 §0.9/§7-19). */
         const val DEFAULT_PAGE_SIZE = 30
         const val MAX_PAGE_SIZE = 100
+
+        /**
+         * 업로드 파트의 Content-Type. 서버가 `image/jpeg`·`png`·`gif`·`webp` 화이트리스트로 검사하므로
+         * 비워 두면(`application/octet-stream`) 무조건 거부된다.
+         * 압축기가 항상 JPEG 로 굽기 때문에 값이 고정이다.
+         */
+        val JPEG_MEDIA_TYPE = "image/jpeg".toMediaType()
     }
 
     /**

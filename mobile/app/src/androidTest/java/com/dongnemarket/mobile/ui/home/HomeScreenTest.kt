@@ -263,12 +263,81 @@ class HomeScreenTest {
         assertFalse(anyTabHandled)
     }
 
+    // ──────────────────────────── 6. 상품 등록 진입 ────────────────────────────
+
+    /**
+     * ⚠️ 이 테스트는 **시맨틱 병합** 때문에 다른 테스트와 단정 방식이 다르다.
+     *
+     * `ExtendedFloatingActionButton` 은 `MergeDescendants = true` 라 안의 아이콘·텍스트가
+     * **버튼 노드 하나로 합쳐진다.** 그래서 기본(병합) 트리에는 "글쓰기" 텍스트 노드가
+     * 아예 존재하지 않고, `onNodeWithText("글쓰기")` 는 아무것도 찾지 못한다
+     * (Compose 가 오류 메시지로 직접 알려 준다 — "the unmerged tree contains 1 node that matches").
+     * → 라벨을 검사하려면 `useUnmergedTree = true` 로 병합 전 트리를 봐야 한다.
+     *
+     * 태그 노드에 `assertIsDisplayed()` 를 쓰지 않는 이유는 별개다.
+     * 그 단정만 실패하는데 **버튼은 실제로 보인다**:
+     *  - `printToLog` 좌표 (747,1938)–(1038,2085)px, 루트 (0,0)–(1080,2400)px → 화면 안쪽
+     *  - 에뮬레이터 스크린샷에 우하단 `＋ 글쓰기` 가 그대로 찍힘(2026-08-04 실기 검수)
+     *  - 같은 노드에 `performClick` 통과(아래 테스트)
+     *  - **병합 전 라벨 노드는 `assertIsDisplayed` 를 통과한다**(이 테스트 마지막 줄)
+     *
+     * 병합된 FAB 노드에서만 그 단정이 왜 실패하는지는 규명하지 못했다.
+     * 모르는 것을 아는 척하는 대신, **표시 여부는 실제로 보이는 라벨로 검사**하고
+     * 태그 노드는 존재만 확인한다.
+     */
+    @Test
+    fun `목록이_보이면_글쓰기_버튼도_함께_보인다`() {
+        // Given
+        composeTestRule.showHome(state = successState(products = fourProducts()))
+
+        // Then: 아이콘만 있는 FAB 은 "＋가 뭘 더한다는 거지" 가 되기 쉬워 글자를 함께 둔다
+        composeTestRule.onNodeWithTag("home_create_fab").assertExists()
+        // useUnmergedTree: FAB 은 MergeDescendants 라 "글쓰기" 가 버튼 노드로 **병합**된다 →
+        // 기본(병합) 트리에는 그 텍스트 노드가 존재하지 않는다.
+        composeTestRule.onNodeWithText("글쓰기", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `글쓰기_버튼을_누르면_등록_화면_이동_의도가_전달된다`() {
+        // Given
+        var createClicked = false
+        composeTestRule.showHome(
+            state = successState(products = fourProducts()),
+            onCreateClick = { createClicked = true },
+        )
+
+        // When
+        composeTestRule.onNodeWithTag("home_create_fab").performClick()
+
+        // Then
+        assertTrue(createClicked)
+    }
+
+    @Test
+    fun `로딩_중에는_글쓰기_버튼이_보이지_않는다`() {
+        // Given
+        composeTestRule.showHome(state = HomeUiState.Loading)
+
+        // Then: 목록조차 못 받은 상태라면 등록에 필요한 카테고리·내 동네도 못 받을 가능성이 높다
+        composeTestRule.onNodeWithTag("home_create_fab").assertDoesNotExist()
+    }
+
+    @Test
+    fun `목록_조회에_실패하면_글쓰기_버튼이_보이지_않는다`() {
+        // Given
+        composeTestRule.showHome(state = HomeUiState.Error("네트워크 연결을 확인해 주세요."))
+
+        // Then: 에러 화면에 FAB 이 떠 있으면 "지금 뭘 눌러야 하는지" 가 흐려진다
+        composeTestRule.onNodeWithTag("home_create_fab").assertDoesNotExist()
+    }
+
     // ──────────────────────────── 테스트 도우미 ────────────────────────────
 
     private fun ComposeContentTestRule.showHome(
         state: HomeUiState,
         onProductClick: (Long) -> Unit = {},
         onChatTabClick: () -> Unit = {},
+        onCreateClick: () -> Unit = {},
         onSearch: (String) -> Unit = {},
         onCategorySelect: (Long?) -> Unit = {},
         onRetry: () -> Unit = {},
@@ -279,6 +348,7 @@ class HomeScreenTest {
                     state = state,
                     onProductClick = onProductClick,
                     onChatTabClick = onChatTabClick,
+                    onCreateClick = onCreateClick,
                     onSearch = onSearch,
                     onCategorySelect = onCategorySelect,
                     // 무한스크롤 트리거는 이 파일의 관심사가 아니다(스크롤 위치에 좌우돼 불안정하다).
