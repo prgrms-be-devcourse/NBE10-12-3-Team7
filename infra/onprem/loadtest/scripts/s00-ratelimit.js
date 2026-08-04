@@ -37,8 +37,14 @@ export const options = {
     },
   },
   // 429 는 여기서 "실패"가 아니라 **기대하는 동작**이다. 기본 임계값을 쓰지 않는다.
+  //
+  // 200 만 떼서 본다. `expected_response:true` 로 묶으면 아래 responseCallback 때문에
+  // 429 까지 "기대한 응답"에 들어가는데, 429 는 본문이 없어 3ms 에 돌아오고 전체의 70% 를
+  // 차지한다 — p95 가 그쪽으로 끌려 내려가 **제한기가 통과 요청을 아무리 느리게 만들어도
+  // 임계값이 그냥 통과한다.** 볼륨 테스트에서 429 를 "빨라졌다"로 기록한 것과 같은 구조다.
+  // 이 서브메트릭은 요약에도 따로 찍혀 통과 요청의 실제 응답시간을 읽을 수 있게 한다.
   thresholds: {
-    'http_req_duration{expected_response:true}': ['p(95)<1000'],
+    'http_req_duration{status:200}': ['p(95)<1000'],
   },
   tags: { scenario: 's00-ratelimit' },
 };
@@ -67,6 +73,11 @@ export function handleSummary(data) {
   const rps = Number(__ENV.TARGET_RPS || 20);
   const expectedPassRate = ((6 / rps) * 100).toFixed(0);
 
+  // 통과한 요청만의 응답시간. 전체 http_req_duration 은 본문 없는 429(약 3ms)가 70% 라
+  // 섞어 보면 "빨라진 것처럼" 보인다. 제한기가 정상 요청을 느리게 만들지 않는지는 이 값으로만 안다.
+  const passedDuration = data.metrics['http_req_duration{status:200}'];
+  const passedP95 = passedDuration ? passedDuration.values['p(95)'] : null;
+
   const lines = [
     '',
     '── 요청 제한 판정 ──────────────────────────────────',
@@ -75,6 +86,9 @@ export function handleSummary(data) {
     `  통과          ${passed}`,
     `  429 로 차단   ${limited} (${pct}%)`,
     `  기대 통과율   약 ${expectedPassRate}% (제한이 초당 6건일 때)`,
+    '',
+    `  통과 요청 p95 ${passedP95 === null ? '표본 없음' : passedP95.toFixed(1) + ' ms'}`,
+    '  (200 만 센 값. 무부하 대비 크게 늘었다면 제한기가 정상 요청까지 지연시키는 것)',
     '',
     `  판정          ${limited > 0
       ? '제한이 동작한다 → 다음 단계에서 풀어도 된다'

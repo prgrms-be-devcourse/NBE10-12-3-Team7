@@ -22,6 +22,55 @@
 
 부하 생성기와 서버를 같은 머신에 두면 CPU 를 나눠 써 결과가 왜곡된다. 그래서 나눈다.
 
+## 측정 위치가 둘이다 — 회차마다 어느 쪽인지 적는다
+
+같은 스크립트를 두 위치에서 돌린다. **조건이 다르므로 절대 수치를 섞어 비교하면 안 된다.**
+
+| | 맥 로컬 (오버레이) | 노트북 (LAN) |
+|---|---|---|
+| `BASE_URL` | `http://nginx:80` (컨테이너 내부) | `http://192.168.219.112` |
+| 실행 | `-f docker-compose.yml -f docker-compose.onprem.yml` | 오버레이 없이 |
+| 무부하 실측 | 23.9 ms | 25.6 ms |
+| 무엇을 재나 | **앱 자체의 상한**(낙관적) — Wi-Fi 를 타지 않는다 | **사용자 실측** — 실제로 겪는 지연 |
+
+**두 회차의 차이가 곧 네트워크 비용이다.** 그래서 둘 다 돌리는 것이고, 어느 쪽인지 기록하지
+않으면 그 차이를 해석할 수 없다.
+
+절대 수치가 달라도 판정은 성립한다 — `setup()` 이 회차마다 그 경로의 무부하를 직접 재고
+**무부하 대비 배수**로 판정하기 때문이다(`scripts/lib/config.js` 의 `latencyRatio`).
+
+### 회차 기록에 반드시 남길 조건
+
+숫자만 남기면 나중에 그 숫자가 무엇의 결과인지 판별할 수 없다. 표마다 아래를 같이 적는다.
+
+| 항목 | 왜 필요한가 |
+|---|---|
+| 측정 위치 | 위 표의 둘 중 어느 쪽인가 |
+| 앱 이미지 빌드 시점 | 코드가 달라지면 비교가 성립하지 않는다 |
+| 요청 제한값 | 풀기 전인가 후인가 (`RATE_LIMIT_CAPACITY`) |
+| 데이터 | `[load]` 상품 몇 건인가 |
+| 배경 부하 | 젠킨스·관측 스택 상주 여부 |
+| VM 자원 | Docker Desktop 할당 CPU·메모리, MySQL buffer pool |
+
+## 맥에서 돌릴 때 (스택과 같은 호스트)
+
+노트북 없이 맥 한 대로 돌릴 수 있다. k6 를 온프렘 스택의 네트워크에 붙여 `nginx` 를 컨테이너
+이름으로 직접 부른다 — 맥의 Wi-Fi 를 타지 않아 **앱 자체의 상한**에 가깝게 잰다.
+
+```bash
+cd infra/onprem/loadtest
+cp .env.example .env          # BASE_URL 은 오버레이가 덮지만 base compose 가 필수로 요구한다
+
+# 오버레이를 얹으면 BASE_URL 이 http://nginx:80 으로 바뀐다
+docker compose -f docker-compose.yml -f docker-compose.onprem.yml run --rm k6 run /scripts/s00-ratelimit.js
+
+# 짧은 동작 확인(35초). 기록에는 남기지 않는다
+SMOKE=true docker compose -f docker-compose.yml -f docker-compose.onprem.yml run --rm k6 run /scripts/s01-arrival.js
+```
+
+> ⚠️ 부하 생성기와 서버가 같은 CPU 를 나눠 쓴다. Grafana 의 VM CPU 가 90% 를 넘은 구간은
+> 앱이 아니라 호스트 포화를 잰 것이므로 폐기한다.
+
 ## 맥에서 (준비)
 
 ```bash

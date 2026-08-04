@@ -28,3 +28,18 @@ services:
 
       # 실행을 구분하는 꼬리표. Grafana 에서 회차를 나눠 보려면 매번 다르게 준다.
       K6_TAGS: ${K6_TAGS:-}
+
+      # 시나리오 스위치. **여기 적어야 컨테이너에 도달한다** — `docker compose run` 은 셸의
+      # 환경변수를 자동으로 넘기지 않는다. 이 줄들이 없으면 `SMOKE=true docker compose run ...`
+      # 이 조용히 무시되고 항상 기본 계단(15분)이 돈다. 실측으로 확인한 함정이다.
+      # 값을 주지 않으면 빈 문자열이 되고, 스크립트에서는 모두 falsy 라 기본값으로 떨어진다.
+      #
+      # ⚠️ `k6 inspect` 로는 이게 먹었는지 확인할 수 없다 — inspect 는 __ENV 를 채우지 않아
+      # 항상 기본 계단을 보여준다. 확인하려면 `k6 run` 으로 돌려야 한다.
+      SMOKE: ${SMOKE:-}
+      SOAK_VU: ${SOAK_VU:-}
+      ALLOWED_RATIO: ${ALLOWED_RATIO:-}
+      TARGET_RPS: ${TARGET_RPS:-}
+      DURATION: ${DURATION:-}
+      THINK_MIN: ${THINK_MIN:-}
+      THINK_MAX: ${THINK_MAX:-}
