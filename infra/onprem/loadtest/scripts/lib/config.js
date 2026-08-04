@@ -24,6 +24,9 @@ export const TREND_STATS = ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max
 // 몇 배까지 허용할지. 기본 3배.
 export const ALLOWED_RATIO = Number(__ENV.ALLOWED_RATIO || 3);
 
+// 이 배수를 넘으면 테스트를 중단한다(Breakpoint 회차에서 붕괴 구간을 오래 돌지 않기 위해).
+export const ABORT_RATIO = Number(__ENV.ABORT_RATIO || 10);
+
 /**
  * 판정 지표. 절대 ms 가 아니라 **그 회차의 무부하 대비 배수**를 기록한다.
  *
@@ -55,8 +58,12 @@ export function measureBaseline(probes) {
   const out = {};
   for (const p of probes) {
     const samples = [];
+    const params = { tags: { name: `baseline_${p.key}` } };
+    // 로그인 회차는 기준선도 **같은 헤더로** 재야 한다. 분모와 분자의 요청 모양이 다르면
+    // 배수가 앱 성능이 아니라 요청 모양의 차이를 재게 된다.
+    if (p.headers) params.headers = p.headers;
     for (let i = 0; i < BASELINE_WARMUP + BASELINE_SAMPLES; i++) {
-      const res = http.get(p.url, { tags: { name: `baseline_${p.key}` } });
+      const res = http.get(p.url, params);
       // 여기에 429 가 섞이면 본문 없는 3ms 가 기준선이 되고, 이후 모든 판정이 무의미해진다.
       expectOk(res, `baseline_${p.key}`);
       if (i >= BASELINE_WARMUP) samples.push(res.timings.duration);
@@ -86,7 +93,16 @@ export function recordRatio(res, baselineMs) {
 export function ratioThresholds(reportNames = []) {
   const t = {
     http_req_failed: ['rate<0.01'],
-    latency_ratio: [`p(95)<${ALLOWED_RATIO}`],
+    latency_ratio: [
+      `p(95)<${ALLOWED_RATIO}`,
+      // **무릎을 확실히 넘으면 그 자리에서 끝낸다.** 2회차에서 무릎을 넘긴 뒤 10분을 붕괴
+      // 상태로 돌았고, 그 구간은 VM CPU 90% 라 통째로 폐기했다 — 10분이 버려졌을 뿐 아니라
+      // 호스트 포화가 무릎 직후 구간까지 오염시켰다.
+      // 허용선(3배)이 아니라 그보다 높은 값에서 끊는 이유: Breakpoint 는 넘는 지점을 찾는
+      // 것이 목적이라 **확실히 무너진 뒤** 끊어야 무릎이 기록된다.
+      // ABORT_RATIO 기본 10 은 임의로 고른 값이다 — 2회차 무릎 구간이 12.4배였던 것을 참고했다.
+      { threshold: `p(95)<${ABORT_RATIO}`, abortOnFail: true, delayAbortEval: '30s' },
+    ],
   };
   for (const name of reportNames) {
     t[`http_req_duration{name:${name}}`] = ['p(95)<60000'];

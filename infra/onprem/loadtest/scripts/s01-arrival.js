@@ -21,6 +21,8 @@
 // 노트북(LAN 너머, 사용자 실측)에서는 오버레이 없이:
 //   docker compose run --rm k6 run /scripts/s01-arrival.js
 
+import http from 'k6/http';
+import exec from 'k6/execution';
 import {
   BASE_URL,
   BASELINE_MS,
@@ -29,8 +31,9 @@ import {
   measureBaseline,
   recordRatio,
   ratioThresholds,
+  expectOk,
 } from './lib/config.js';
-import { screenProductList } from './lib/screens.js';
+import { screenProductList, screenProductListLoggedIn } from './lib/screens.js';
 import { pickArrivalStages } from './lib/stages.js';
 
 /**
@@ -44,6 +47,21 @@ import { pickArrivalStages } from './lib/stages.js';
  * 재현할 뿐이라 **인증 오버헤드는 빠져 있다** — F-01 은 DB 비용 문제라 오히려 격리된다.
  */
 const REGION_CODE = __ENV.REGION_CODE || '';
+
+/**
+ * 로그인 회차 스위치(3회차). `LOGIN=true` 면 시드 계정으로 미리 토큰을 받아 로그인 화면을 연다.
+ *
+ * 회원가입은 부하 경로에 넣지 않는다 — 이메일 인증이 선행 필수라 k6 로는 불가능하고(인증 코드가
+ * 메일로만 간다), 사용자당 평생 1회라 부하 대상도 아니다. 대신 `10-seed.sql` 이 만들어 둔
+ * 계정 300개를 쓴다.
+ *
+ * **비밀번호는 코드에 넣지 않는다.** 이 리포는 public 이고, 시드 계정 비밀번호는 관리자 계정
+ * 해시를 복사한 것이라 그대로 적으면 이미 있는 노출을 한 번 더 늘리게 된다. `.env`(gitignore)
+ * 에서만 읽는다.
+ */
+const LOGIN = __ENV.LOGIN === 'true';
+const LOGIN_PASSWORD = __ENV.LOGIN_PASSWORD || '';
+const LOGIN_ACCOUNTS = Number(__ENV.LOGIN_ACCOUNTS || 300);
 
 export const options = {
   scenarios: {
@@ -68,14 +86,52 @@ export const options = {
 };
 
 /**
+ * 시드 계정으로 미리 로그인해 토큰을 모은다. 로그인 1회가 bcrypt 때문에 약 90ms 라
+ * 300개면 약 30초 걸린다 — 그동안 앱이 워밍업되는 것은 기준선에 오히려 유리하다.
+ * **로그인 자체는 부하 구간에 넣지 않는다.** 이번에 재려는 것은 로그인한 사용자의 화면 비용이지
+ * 로그인 처리 비용이 아니다.
+ */
+function issueTokens(count) {
+  const tokens = [];
+  for (let i = 1; i <= count; i++) {
+    const email = `load-${String(i).padStart(6, '0')}@loadtest.local`;
+    const res = http.post(
+      `${BASE_URL}/api/auth/login`,
+      JSON.stringify({ email, password: LOGIN_PASSWORD }),
+      { headers: { 'Content-Type': 'application/json' }, tags: { name: 'setup_login' } }
+    );
+    expectOk(res, `login ${email}`);
+    const token = res.json('data.accessToken');
+    if (!token) exec.test.abort(`${email} 로그인 응답에 accessToken 이 없다.`);
+    tokens.push(token);
+  }
+  return tokens;
+}
+
+/**
  * 부하를 걸기 전에 이 회차의 무부하를 직접 잰다. **판정의 기준선이다.**
  *
  * 왜 고정값을 안 쓰나: 호스트 curl 실측 13ms 를 그대로 쓰면 허용선이 39ms 인데, k6 컨테이너
  * 경로는 무부하가 이미 24ms 다 — 여유가 3배가 아니라 1.6배뿐이다. 그 상태로 재면 앱이 아직
- * 멀쩡한데도 VU 를 조금만 올리면 허용선을 넘어 **"무릎"으로 오독된다.**
- * 컨테이너 경유 고정비(약 7ms)는 부하와 무관한 덧셈인데 판정은 곱셈이라 여유를 갉아먹는다.
+ * 멀쩡한데도 도착률을 조금만 올려도 허용선을 넘어 **"무릎"으로 오독된다.**
  */
 export function setup() {
+  let tokens = [];
+  if (LOGIN) {
+    if (!LOGIN_PASSWORD) {
+      exec.test.abort(
+        'LOGIN=true 인데 LOGIN_PASSWORD 가 없다. loadtest/.env 에 시드 계정 비밀번호를 넣을 것 ' +
+        '(코드에 적지 않는다 — 이 리포는 public 이다).'
+      );
+    }
+    tokens = issueTokens(LOGIN_ACCOUNTS);
+    console.log(`로그인 토큰 ${tokens.length}개 발급`);
+  }
+
+  // 판정 대상인 `/api/products` 는 **로그인 여부와 무관하게 인증 헤더가 붙지 않는다**
+  // (프론트가 apiFetch 가 아니라 fetch 로 부른다). 그래서 기준선 측정도 1회차와 똑같다 —
+  // 같은 요청, 같은 분모다. 3회차가 재는 것은 "같은 요청이 화면당 API 2건 늘어난 상태에서
+  // 얼마나 느려지나" 이고, 그래서 1회차와 직접 비교된다.
   const probes = [{ key: 'list', url: `${BASE_URL}/api/products?size=30` }];
 
   // 동네 필터 회차(REGION_CODE 지정)는 **필터를 건 무부하**를 따로 잰다.
@@ -97,14 +153,19 @@ export function setup() {
       : '') +
     ` (판정 허용선 ${(judged * ALLOWED_RATIO).toFixed(1)}ms = ${ALLOWED_RATIO}배)`
   );
-  return { baseline, judged };
+  return { baseline, judged, tokens };
 }
 
 // 반복 1회 = 사람 1명이 상품 목록 화면에 한 번 들어오는 것. 그게 전부다.
 // think time 을 넣지 않는다 — 다음 행동이 없고, 도착률 자체가 부하 모델이기 때문이다.
 // 여기서 sleep 을 하면 VU 만 더 오래 붙잡아 같은 도착률에 더 많은 VU 가 필요해질 뿐이다.
 export default function (data) {
-  const res = screenProductList(REGION_CODE ? { regionCode: REGION_CODE } : {});
+  const opts = REGION_CODE ? { regionCode: REGION_CODE } : {};
+  // VU 마다 다른 계정을 쓴다. 계정이 VU 보다 적으면 돌려 쓴다 — 같은 계정의 me/* 응답은
+  // 캐시가 잘 들 수 있어 실제보다 낙관적일 수 있는 지점이라, 결과에 계정 수를 함께 남긴다.
+  const res = LOGIN
+    ? screenProductListLoggedIn(data.tokens[(exec.vu.idInTest - 1) % data.tokens.length], opts)
+    : screenProductList(opts);
   recordRatio(res, data.judged);
 }
 
@@ -143,7 +204,7 @@ export function handleSummary(data) {
   const lines = [
     '',
     '── 1단계 판정 ──────────────────────────────────────',
-    `  측정 대상     ${REGION_CODE ? `동네 필터 (regionCodes=${REGION_CODE})` : '필터 없는 목록'}`,
+    `  측정 대상     ${LOGIN ? `로그인 (계정 ${LOGIN_ACCOUNTS}개)` : '비로그인'} · ${REGION_CODE ? `동네 필터 (${REGION_CODE})` : '필터 없음'}`,
     `  무부하 기준   목록 ${base.toFixed(1)} ms (이 회차 setup 에서 실측)`,
     ...(filtered ? [
       `                동네필터 ${filtered.toFixed(1)} ms → **필터 고정 비용 ${(filtered / base).toFixed(2)} 배**`,

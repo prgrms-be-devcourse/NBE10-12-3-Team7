@@ -145,6 +145,11 @@ services:
       DB_USERNAME: ${DB_USERNAME:-dongne}
       DB_PASSWORD: ${DB_PASSWORD:-dongne1234}
       JWT_SECRET: ${JWT_SECRET:-dongne-market-local-dev-secret-please-change-0123456789}
+      # 액세스 토큰 수명. 기본 900초(15분)인데 부하 계단이 15분 30초라, 로그인 회차에서
+      # setup() 이 받은 토큰이 **테스트 막바지에 만료돼 401 로 중단**된다. 토큰 갱신 비용은
+      # 이번에 재려는 것이 아니므로 회차 동안만 크게 준다(조건은 conditions.md 에 남는다).
+      #   JWT_ACCESS_TTL=3600 docker compose --env-file .env up -d app
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
       # 인증 관련 TTL 데이터 저장소(같은 스택의 redis 컨테이너)
       REDIS_HOST: redis
       REDIS_PORT: 6379

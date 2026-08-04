@@ -37,6 +37,44 @@ export function screenProductList(opts = {}) {
 }
 
 /**
+ * 상품 목록 화면 (`/products`) — **로그인 상태.**
+ * 출처: frontend/src/app/products/page.tsx 의 useEffect(136~164행)
+ *
+ * ⚠️ 인증 헤더가 붙는 요청과 아닌 요청이 갈린다 — 프론트 코드 그대로다.
+ *   `fetch('/api/categories')`            → 인증 없음
+ *   `apiFetch('/api/members/me/locations')` → 인증 있음
+ *   `apiFetch('/api/members/me/favorites')` → 인증 있음
+ *   `fetch('/api/products?...')`          → **인증 없음** (서버측 개인화가 없다)
+ *
+ * 프론트는 앞의 셋을 Promise.all 로, 목록을 별도 effect 로 부른다. 여기서는 넷을 한 batch 로
+ * 묶었다 — 서버가 받는 요청 집합은 같고, 화면 진입 1회를 반복 1회로 세기 위해서다.
+ * 페이지 진입 시의 조용한 재로그인(`/api/auth/reissue`)은 제외했다. 유효한 토큰을 들고 있는
+ * 사용자를 모델링하며, 토큰 갱신 비용은 이번에 재려는 것이 아니다.
+ */
+export function screenProductListLoggedIn(token, opts = {}) {
+  const size = opts.size || 30;
+  const region = opts.regionCode ? `&regionCodes=${opts.regionCode}` : '';
+  const cursor = opts.cursor ? `&cursor=${opts.cursor}` : '';
+  const auth = { headers: { Authorization: `Bearer ${token}` } };
+
+  const res = http.batch([
+    ['GET', `${BASE_URL}/api/categories`, null, { tags: { name: 'categories' } }],
+    ['GET', `${BASE_URL}/api/members/me/locations`, null,
+      { tags: { name: 'my_locations' }, headers: auth.headers }],
+    ['GET', `${BASE_URL}/api/members/me/favorites`, null,
+      { tags: { name: 'my_favorites' }, headers: auth.headers }],
+    ['GET', `${BASE_URL}/api/products?size=${size}${region}${cursor}`, null,
+      { tags: { name: 'products_list' } }],
+  ]);
+
+  expectOk(res[0], 'categories');
+  expectOk(res[1], 'my_locations');
+  expectOk(res[2], 'my_favorites');
+  expectOk(res[3], 'products_list');
+  return res[3];
+}
+
+/**
  * 상품 상세 화면 (`/products/{id}`) — 비로그인.
  * 출처: frontend/src/app/products/[id]/page.tsx
  * 로그인 상태면 favorites·chat-rooms 가 더 나가지만, 비로그인 시나리오에서는 이 셋이다.
