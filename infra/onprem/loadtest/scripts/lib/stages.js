@@ -100,6 +100,41 @@ export const ARRIVAL_LADDER = [
   { duration: '30s', target: 0 },
 ];
 
+// ── 쓰기 계단 ──────────────────────────────────────────────────────────────
+//
+// 도착률은 읽기와 같은 값(20~600)이지만 **유지 시간이 1분이다**(읽기는 2분).
+//
+// 쓰기는 매 요청이 행을 만든다. 읽기 회차는 15분 내내 상품 10만 건으로 고정이었지만,
+// 쓰기를 2분씩 유지하면 회차 한 번에 20만 건 넘게 쌓여 **10만이 30만이 된다** — 후반 계단은
+// 앞 계단과 다른 데이터 크기에서 재게 되고, 동시성 효과와 데이터량 효과가 섞여 무릎을
+// 해석할 수 없다(데이터량 축은 perf 가 따로 잰다).
+// 유지를 절반으로 줄이면 생성량도 절반이 된다. 무릎을 넘으면 자동 중단되므로 실제로는 더 적다.
+//
+// **쓰기 회차끼리만 비교하면 되므로 읽기 회차와 계단이 달라도 문제되지 않는다.**
+// 대신 회차 조건에 시작·종료 시점의 상품 수를 남긴다.
+export const WRITE_LADDER = [
+  { duration: '30s', target: 20 },
+  { duration: '1m', target: 20 },
+  { duration: '30s', target: 50 },
+  { duration: '1m', target: 50 },
+  { duration: '30s', target: 100 },
+  { duration: '1m', target: 100 },
+  { duration: '30s', target: 200 },
+  { duration: '1m', target: 200 },
+  { duration: '30s', target: 400 },
+  { duration: '1m', target: 400 },
+  { duration: '30s', target: 600 },
+  { duration: '1m', target: 600 },
+  { duration: '30s', target: 0 },
+];
+
+/** 쓰기 계단 선택. 읽기의 pickArrivalStages() 와 같은 규칙이다. */
+export function pickWriteStages() {
+  if (__ENV.SMOKE === 'true') return ARRIVAL_SMOKE;
+  if (__ENV.SOAK_RATE) return arrivalSoak(Number(__ENV.SOAK_RATE));
+  return WRITE_LADDER;
+}
+
 /** 짧은 확인용. 스크립트가 도는지 볼 때만 쓰고 기록에는 남기지 않는다. */
 export const ARRIVAL_SMOKE = [
   { duration: '10s', target: 5 },

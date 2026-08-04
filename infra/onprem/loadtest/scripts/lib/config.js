@@ -63,9 +63,11 @@ export function measureBaseline(probes) {
     // 배수가 앱 성능이 아니라 요청 모양의 차이를 재게 된다.
     if (p.headers) params.headers = p.headers;
     for (let i = 0; i < BASELINE_WARMUP + BASELINE_SAMPLES; i++) {
-      const res = http.get(p.url, params);
+      // 쓰기 경로는 POST 로 잰다. 기준선 측정도 행을 만들지만(20건) 10만 건 대비 무시할 수준이고,
+      // **분모와 분자가 같은 요청이어야** 배수가 의미를 갖는다.
+      const res = p.method === 'POST' ? http.post(p.url, p.body, params) : http.get(p.url, params);
       // 여기에 429 가 섞이면 본문 없는 3ms 가 기준선이 되고, 이후 모든 판정이 무의미해진다.
-      expectOk(res, `baseline_${p.key}`);
+      expectOk(res, `baseline_${p.key}`, p.okStatuses || [200]);
       if (i >= BASELINE_WARMUP) samples.push(res.timings.duration);
     }
     samples.sort((a, b) => a - b);
@@ -119,7 +121,7 @@ export function ratioThresholds(reportNames = []) {
  *
  * s00-ratelimit 만 예외다 — 그 시나리오는 429 를 기대하고 재므로 이 함수를 쓰지 않는다.
  */
-export function expectOk(res, name) {
+export function expectOk(res, name, okStatuses = [200]) {
   if (res.status === 429) {
     exec.test.abort(
       `${name} 이 429 다. 요청 제한(IP 당 기본 초당 6건)에 걸렸다 — 이 상태로 측정하면 ` +
@@ -127,7 +129,8 @@ export function expectOk(res, name) {
       `  RATE_LIMIT_CAPACITY=100000 docker compose --env-file .env up -d app`
     );
   }
-  if (res.status !== 200) {
-    exec.test.abort(`${name} 이 HTTP ${res.status}. 측정을 중단한다.`);
+  // 등록은 201 을 돌려준다. 시나리오마다 정상 코드가 달라 목록으로 받는다.
+  if (okStatuses.indexOf(res.status) === -1) {
+    exec.test.abort(`${name} 이 HTTP ${res.status} (기대: ${okStatuses.join('/')}). 측정을 중단한다.`);
   }
 }

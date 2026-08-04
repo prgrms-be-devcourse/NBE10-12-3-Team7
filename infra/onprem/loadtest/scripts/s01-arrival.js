@@ -34,6 +34,7 @@ import {
   expectOk,
 } from './lib/config.js';
 import { screenProductList, screenProductListLoggedIn } from './lib/screens.js';
+import { issueTokens, tokenFor, LOGIN_PASSWORD } from './lib/auth.js';
 import { pickArrivalStages } from './lib/stages.js';
 
 /**
@@ -60,7 +61,6 @@ const REGION_CODE = __ENV.REGION_CODE || '';
  * 에서만 읽는다.
  */
 const LOGIN = __ENV.LOGIN === 'true';
-const LOGIN_PASSWORD = __ENV.LOGIN_PASSWORD || '';
 const LOGIN_ACCOUNTS = Number(__ENV.LOGIN_ACCOUNTS || 300);
 
 export const options = {
@@ -84,29 +84,6 @@ export const options = {
   thresholds: ratioThresholds(['products_list']),
   tags: { scenario: 's01-arrival' },
 };
-
-/**
- * 시드 계정으로 미리 로그인해 토큰을 모은다. 로그인 1회가 bcrypt 때문에 약 90ms 라
- * 300개면 약 30초 걸린다 — 그동안 앱이 워밍업되는 것은 기준선에 오히려 유리하다.
- * **로그인 자체는 부하 구간에 넣지 않는다.** 이번에 재려는 것은 로그인한 사용자의 화면 비용이지
- * 로그인 처리 비용이 아니다.
- */
-function issueTokens(count) {
-  const tokens = [];
-  for (let i = 1; i <= count; i++) {
-    const email = `load-${String(i).padStart(6, '0')}@loadtest.local`;
-    const res = http.post(
-      `${BASE_URL}/api/auth/login`,
-      JSON.stringify({ email, password: LOGIN_PASSWORD }),
-      { headers: { 'Content-Type': 'application/json' }, tags: { name: 'setup_login' } }
-    );
-    expectOk(res, `login ${email}`);
-    const token = res.json('data.accessToken');
-    if (!token) exec.test.abort(`${email} 로그인 응답에 accessToken 이 없다.`);
-    tokens.push(token);
-  }
-  return tokens;
-}
 
 /**
  * 부하를 걸기 전에 이 회차의 무부하를 직접 잰다. **판정의 기준선이다.**
@@ -164,7 +141,7 @@ export default function (data) {
   // VU 마다 다른 계정을 쓴다. 계정이 VU 보다 적으면 돌려 쓴다 — 같은 계정의 me/* 응답은
   // 캐시가 잘 들 수 있어 실제보다 낙관적일 수 있는 지점이라, 결과에 계정 수를 함께 남긴다.
   const res = LOGIN
-    ? screenProductListLoggedIn(data.tokens[(exec.vu.idInTest - 1) % data.tokens.length], opts)
+    ? screenProductListLoggedIn(tokenFor(data.tokens), opts)
     : screenProductList(opts);
   recordRatio(res, data.judged);
 }

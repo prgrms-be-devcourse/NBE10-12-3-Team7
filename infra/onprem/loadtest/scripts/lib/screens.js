@@ -93,6 +93,38 @@ export function screenProductDetail(productId) {
 }
 
 /**
+ * 상품 등록 요청 본문. 화면이 아니라 **행동(action)** 이라 screen* 이 아닌 이름을 쓴다.
+ *
+ * 마커 `[load-write]` 로 시작한다 — 회차 후 정리(`setup/unload-write.sh`)가 이걸로 지운다.
+ * `[load]`(읽기용 시드)와 마커가 달라 서로를 건드리지 않는다.
+ *
+ * 동네·카테고리를 순환시키는 이유: 한 곳에 몰아 넣으면 그 인덱스에만 경합이 생겨 실제와 다르다.
+ */
+export function buildProductPayload(n, categoryIds, regionCodes) {
+  return {
+    categoryId: categoryIds[n % categoryIds.length],
+    title: `[load-write] 부하테스트 등록 ${n}`,
+    description: '부하테스트가 만든 상품이다. 회차 후 정리 대상.',
+    price: 10000 + (n % 90) * 1000,
+    regionCode: regionCodes[n % regionCodes.length],
+    // ⚠️ 저장소에 실제로 없는 URL 이다. validateProductImages 가 개수만 검사한다.
+    // 업로드(RustFS)를 부하 경로에서 빼기 위한 의도적 선택이다.
+    imageUrls: ['/api/products/images/loadtest-placeholder.jpg'],
+    thumbnailIndex: 0,
+  };
+}
+
+/** 상품 등록. 성공 시 201 이다. */
+export function actionProductCreate(token, payload) {
+  const res = http.post(`${BASE_URL}/api/products`, JSON.stringify(payload), {
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    tags: { name: 'product_create' },
+  });
+  expectOk(res, 'product_create', [201]);
+  return res;
+}
+
+/**
  * 목록 응답에서 다음 행동에 필요한 값을 꺼낸다.
  * 상품 id 를 하드코딩하지 않기 위해서다 — 데이터를 다시 적재하면 id 가 바뀐다
  * (perf 에서 id 를 박아뒀다가 404 를 맞은 적이 있다).
