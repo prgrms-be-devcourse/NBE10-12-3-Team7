@@ -30,7 +30,7 @@ mobile/app/src/main/java/com/dongnemarket/mobile/
 │   └── repository/   Repository 인터페이스 (data가 구현)
 ├── di/               Hilt 모듈
 └── ui/
-    ├── login/ home/ productdetail/ chat/ productcreate/    화면별 Composable + ViewModel
+    ├── login/ home/ productdetail/ chat/ productcreate/ region/    화면별 Composable + ViewModel
     ├── component/    공용 컴포넌트
     ├── navigation/   화면 이동
     └── theme/        테마
@@ -46,7 +46,8 @@ mobile/app/src/main/java/com/dongnemarket/mobile/
 | `home` | 상품 목록 (+ 글쓰기 FAB) |
 | `productdetail` | 상품 상세 |
 | `chat` | 채팅 목록 · 채팅방 |
-| `productcreate` | **상품 등록** |
+| `productcreate` | 상품 등록 |
+| `region` | **내 동네 설정** |
 
 ## 상품 등록 — 2단계 요청
 
@@ -65,7 +66,7 @@ POST /api/products          그 경로들을 imageUrls 에 실어 전송
 
 **지역**: `regionCode` 는 읍면동(level 3)만 받는다. 내 동네 설정도 서버가 같은 제약을 걸어서
 `GET /api/members/me/locations` 결과를 그대로 쓴다(변환·재검증 불필요).
-동네 미설정 계정은 등록할 수 없어 안내 화면을 띄운다 — **동네 설정 화면은 아직 없다.**
+동네 미설정 계정은 등록할 수 없어 안내 + **동네 설정 화면으로 가는 버튼**을 띄운다.
 
 > ⚠️ 서버가 `description` 을 검증 없이 역참조한다(`request.description!!`) → null 이면 **500**.
 > 앱은 미입력이어도 빈 문자열을 보낸다. `explicitNulls = false` 라 null 이면 키가 통째로 빠지기 때문이다.
@@ -84,6 +85,22 @@ POST /api/products          그 경로들을 imageUrls 에 실어 전송
 
 - 화면 표시는 `region.display`(짧은 이름, 비면 전체 이름)
 - 서버 필터는 `region.code` — 쿼리 파라미터도 `regions` 가 아니라 **`regionCodes`**
+
+### 내 동네 설정 — 드릴다운뿐이다
+
+전국이 시·도 **16** + 시·군·구 **255** + 읍·면·동 **5,067** = 5,338건인데
+서버가 주는 것은 `GET /api/regions?parentCode=` 하나뿐이고 **검색 API 도 페이징도 없다**
+→ 한 단계씩 내려가는 것이 유일한 탐색 방법이다. `RegionRepository` 가 단계별로 캐시한다.
+
+| 서버 규칙 | 앱이 하는 일 |
+|---|---|
+| **1~2개**, 중복 불가 | 상한에 닿으면 안내, 이미 고른 것 다시 누르면 해제 |
+| **읍·면·동(level 3)만** | `Region.isSelectable` 로 판단 — 그 위는 꺾쇠(파고들기), 동은 체크(선택) |
+| **리스트 0번이 대표** | 대표를 **순서**로 표현한다(칩을 누르면 맨 앞으로). 플래그를 따로 두지 않는다 |
+| **전체 교체** | 화면 진입 시 **기존 내 동네를 초기 선택값으로 채운다** |
+
+> ⚠️ 마지막 줄이 중요하다. 안 채우면 동네를 **추가**하려던 사용자가 하나만 고르고 저장하는 순간
+> 원래 있던 다른 하나를 잃는다. 예외도 에러도 없이 사라진다.
 
 ## 빌드 · 테스트
 
@@ -115,4 +132,4 @@ debug 빌드는 `http://10.0.2.2:8080` (에뮬레이터가 보는 PC의 localhos
 
 - API 스펙의 정본은 백엔드 **Swagger**다. DTO를 손으로 작성하므로 백엔드 변경 시 어긋날 수 있다.
 - 화면·계층이 추가되면 이 문서의 구조를 **같은 PR에서** 갱신한다.
-- 현재 백엔드 API **81개 중 20개(25%)** 만 소비한다. 회원가입·찜목록·내정보·상품수정/삭제·동네설정·알림·에스크로·경매는 미구현이다.
+- 현재 백엔드 API **81개 중 21개(26%)** 만 소비한다. 회원가입·찜목록·내정보·상품수정/삭제·알림·에스크로·경매는 미구현이다.
