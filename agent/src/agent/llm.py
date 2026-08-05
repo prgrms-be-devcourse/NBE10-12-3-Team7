@@ -7,11 +7,14 @@ base_url/model/key만 바꾸면 다른 OpenAI 호환 프로바이더로 교체 �
 
 from __future__ import annotations
 
+from langsmith.wrappers import wrap_openai
 from openai import OpenAI
 
 from agent.config import settings
 
-_client = OpenAI(base_url=settings.nim_base_url, api_key=settings.nim_api_key)
+# wrap_openai: LANGSMITH_TRACING=true면 이 클라이언트의 NIM 호출이 그래프 트레이스에 nested로 잡힌다.
+# 트레이싱이 꺼져 있으면 no-op으로 그냥 통과한다.
+_client = wrap_openai(OpenAI(base_url=settings.nim_base_url, api_key=settings.nim_api_key))
 
 
 def generate(system: str, user: str) -> str:
