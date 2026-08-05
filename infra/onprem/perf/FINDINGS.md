@@ -1,5 +1,8 @@
 # FINDINGS — 성능 문제 대장
 
+> 상위: [README.md](README.md) · [../README.md](../README.md) · [../../infra.md](../../infra.md)
+> 근거가 되는 회차 기록: [results/](results/) (볼륨) · [../loadtest/results/](../loadtest/results/) (부하)
+
 회차를 관통하는 문서다. `results/run-N-*/summary.md` 는 그 회차의 결론이고, 여기는
 **문제 하나를 발견부터 해결까지 따라가는 곳**이다.
 
