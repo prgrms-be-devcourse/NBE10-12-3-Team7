@@ -35,7 +35,13 @@ export function issueTokens(count) {
     const res = http.post(
       `${BASE_URL}/api/auth/login`,
       JSON.stringify({ email, password: LOGIN_PASSWORD }),
-      { headers: { 'Content-Type': 'application/json' }, tags: { name: 'setup_login' } }
+      {
+        headers: { 'Content-Type': 'application/json' },
+        tags: { name: 'setup_login' },
+        // 시나리오가 discardResponseBodies 를 켜므로 **이 요청만 본문을 되살린다** —
+        // accessToken 을 꺼내야 하기 때문이다.
+        responseType: 'text',
+      }
     );
     expectOk(res, `login ${email}`);
     const token = res.json('data.accessToken');

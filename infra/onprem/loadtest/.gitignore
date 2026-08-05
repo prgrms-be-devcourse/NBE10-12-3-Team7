@@ -1,3 +1,5 @@
 .env
 results/**/raw/
 results/**/*.log
+results/**/docker-stats.csv
+results/**/watcher.log

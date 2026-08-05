@@ -122,12 +122,72 @@ fi
 export K6_TAGS="testid:$(basename "$RUN_DIR")"
 echo "| k6 → Prometheus | \`${RW_URL:-없음}\` · testid=\`$(basename "$RUN_DIR")\` |" >> "$CONDITIONS"
 
+# ── CPU 워처 ──────────────────────────────────────────────────────────────
+# **부하 생성기가 앱을 왜곡하기 전에 멈춘다.** 맥 한 대에서 돌 때만 켠다.
+#
+# k6 는 호스트 CPU 를 읽을 수 없으므로 밖에서 감시해야 한다. VM 전체 CPU 가 임계(기본 85%)를
+# **연속 3회** 넘으면 k6 를 중단한다 — 한 번 튄 값에 회차가 끝나지 않도록 연속 조건을 둔다.
+#
+# 왜 90%(폐기 기준)가 아니라 85% 인가: 90% 는 "이미 오염된 뒤"라 그 구간을 버리게 된다.
+# 실제로 2회차에서 무릎을 넘긴 뒤 10분을 CPU 90% 로 돌아 통째로 폐기했다.
+#
+# 처음에 70% 로 뒀다가 85% 로 올렸다. s03 회차에서 docker stats 로 컨테이너별 CPU 를 분리해
+# 보니 **k6 는 전체의 3% 밖에 쓰지 않았다**(앱 19% · MySQL 31%). 즉 70% 캡은 앱을 보호한 것이
+# 아니라 측정을 일찍 끊은 것에 가까웠다 — 그 회차는 무릎 직후 CPU 75% 에서 잘렸다.
+#
+# k6 컨테이너에 CPU 상한(K6_CPUS, 기본 3코어 = 30%)이 걸려 있으므로, 전체가 85% 라도
+# **앱+DB 가 최소 55% 를 확보한 상태**다. 실측에서는 k6 가 3% 밖에 안 썼다.
+CPU_LIMIT="${CPU_LIMIT_PCT:-85}"
+WATCHER_PID=""
+if [ "$STACK_HERE" = 1 ]; then
+  (
+    over=0
+    while :; do
+      sleep 5
+      cpu="$(curl -s --get 'http://localhost:9090/api/v1/query' \
+              --data-urlencode 'query=100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[30s])) * 100)' \
+            2>/dev/null | sed -n 's/.*"value":\[[0-9.]*,"\([0-9.]*\)".*/\1/p')"
+      [ -z "$cpu" ] && continue
+      if [ "$(printf '%.0f' "$cpu")" -ge "$CPU_LIMIT" ]; then
+        over=$((over + 1))
+        if [ "$over" -ge 3 ]; then
+          echo "⚠️ VM CPU ${cpu}% — 임계 ${CPU_LIMIT}% 를 연속 3회 넘어 회차를 중단한다." \
+            >> "$RUN_DIR/raw/k6.log"
+          echo "cpu-watcher ${cpu}%" > "$RUN_DIR/raw/.stopped-by"
+          docker ps -q --filter "ancestor=grafana/k6:latest" | xargs -r docker stop >/dev/null 2>&1
+          exit 0
+        fi
+      else
+        over=0
+      fi
+    done
+  ) >> "$RUN_DIR/raw/watcher.log" 2>&1 &
+  WATCHER_PID=$!
+  echo "| 중단 조건 | 배수 ${ABORT_RATIO:-10}배 초과 **또는** VM CPU ${CPU_LIMIT}% 연속 초과 · k6 CPU 상한 ${K6_CPUS:-3}코어 |" >> "$CONDITIONS"
+fi
+
+# ── 컨테이너별 자원 샘플링 ─────────────────────────────────────────────────
+# cAdvisor 는 Docker Desktop 에서 컨테이너별로 갈리지 않는다(name 라벨 없이 루트 cgroup 하나).
+# 회차 중 어느 컨테이너가 CPU 를 얼마나 썼는지 사후에 판별할 유일한 수단이다.
+STATS_PID=""
+if [ "$STACK_HERE" = 1 ]; then
+  ( echo "time,name,cpu_pct,mem_usage,net_io"
+    while :; do
+      ts="$(date +%H:%M:%S)"
+      docker stats --no-stream --format "${ts},{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.NetIO}}" 2>/dev/null
+      sleep 5
+    done ) > "$RUN_DIR/raw/docker-stats.csv" 2>/dev/null &
+  STATS_PID=$!
+fi
+
 # ── 실행 ──────────────────────────────────────────────────────────────────
 # k6 는 임계값을 넘기면 99 로 끝난다. 그때도 결과는 남겨야 하므로 여기서 중단하지 않는다.
 set +e
 "${COMPOSE[@]}" run --rm k6 run "${K6_OUT[@]}" "/scripts/${SCENARIO}.js" 2>&1 | tee "$RUN_DIR/raw/k6.log"
 K6_EXIT="${PIPESTATUS[0]}"
 set -e
+[ -n "$WATCHER_PID" ] && kill "$WATCHER_PID" 2>/dev/null
+[ -n "$STATS_PID" ] && kill "$STATS_PID" 2>/dev/null
 
 # ── 결과 회수 ──────────────────────────────────────────────────────────────
 moved=0
@@ -142,8 +202,22 @@ done
 
 echo
 echo "▶ 남긴 곳: $RUN_DIR"
-echo "  conditions.md  조건(자동)"
-echo "  summary.md     결론 — **사람이 채운다.** 비워두면 나중에 이 회차를 못 읽는다"
-echo "  raw/k6.log     원시 출력(gitignore)"
-[ "$K6_EXIT" != 0 ] && echo "  ⚠️ k6 종료 코드 ${K6_EXIT} — 임계값을 넘었을 수 있다"
+echo "  conditions.md      조건(자동)"
+echo "  summary.md         결론 — **사람이 채운다.** 비워두면 나중에 이 회차를 못 읽는다"
+echo "  raw/k6.log         원시 출력(gitignore)"
+[ -f "$RUN_DIR/raw/docker-stats.csv" ] && echo "  raw/docker-stats.csv  컨테이너별 CPU·메모리 시계열(gitignore)"
+
+# **어느 조건으로 끝났는지가 결과 해석을 가른다.** 회차 기록에도 남긴다.
+if [ -f "$RUN_DIR/raw/.stopped-by" ]; then
+  echo
+  echo "  ⚠️ **VM CPU 임계(${CPU_LIMIT}%)로 중단됐다.** 앱이 무너진 것이 아니라 부하 생성기가"
+  echo "     앱을 왜곡하기 시작한 지점이다 — '이 환경에서는 여기까지'가 결론이고, 무릎은 못 찾은 것이다."
+  echo "| 종료 사유 | **VM CPU ${CPU_LIMIT}% 초과로 중단** — 무릎이 아니라 측정 한계 |" >> "$CONDITIONS"
+elif [ "$K6_EXIT" != 0 ]; then
+  echo
+  echo "  ⚠️ k6 종료 코드 ${K6_EXIT} — 배수 임계를 넘어 중단됐을 수 있다(= 무릎을 찾았을 수 있다)."
+  echo "| 종료 사유 | k6 종료 코드 ${K6_EXIT} — 배수 임계 초과(무릎) 가능성 |" >> "$CONDITIONS"
+else
+  echo "| 종료 사유 | 계단을 끝까지 완주 |" >> "$CONDITIONS"
+fi
 exit 0

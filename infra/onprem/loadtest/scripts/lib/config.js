@@ -76,9 +76,16 @@ export function measureBaseline(probes) {
   return out;
 }
 
-/** 요청 하나를 무부하 대비 배수로 환산해 기록한다. */
-export function recordRatio(res, baselineMs) {
-  latencyRatio.add(res.timings.duration / baselineMs);
+/**
+ * 요청 하나를 무부하 대비 배수로 환산해 기록한다.
+ *
+ * `path` 를 주면 태그가 붙어 **경로별로 나눠 볼 수 있다.** 복합 시나리오에서 특히 중요하다 —
+ * 배수는 각 경로를 자기 무부하로 나눈 값이라 **서로 다른 경로를 한 지표에 합쳐도 의미가 있고**
+ * (그게 절대 ms 가 아니라 배수로 판정하는 이유다), 동시에 태그로 갈라 어느 경로가 먼저
+ * 무너졌는지 짚을 수 있다.
+ */
+export function recordRatio(res, baselineMs, path) {
+  latencyRatio.add(res.timings.duration / baselineMs, path ? { path } : undefined);
 }
 
 /**
