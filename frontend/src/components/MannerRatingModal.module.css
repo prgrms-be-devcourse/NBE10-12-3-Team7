@@ -46,7 +46,7 @@
   transition: transform .1s, color .1s;
 }
 .star:hover { transform: scale(1.08); }
-.star.on { color: var(--amber); }
+.star.on { color: var(--ok); }
 .hint {
   min-height: 18px;
   font-size: 13px;
