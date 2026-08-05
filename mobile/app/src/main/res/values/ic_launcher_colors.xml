@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  런처 아이콘 배경색.
+
+  `Color.kt` 의 `MarketPink`(0xFFE85D9E)와 **같은 값**이다.
+  아이콘은 XML 리소스라 Compose 의 Kotlin 상수를 참조할 수 없어서 색이 두 곳에 존재한다 →
+  브랜드 색을 바꿀 때 여기도 같이 고쳐야 한다.
+-->
+<resources>
+    <color name="ic_launcher_background">#E85D9E</color>
+</resources>

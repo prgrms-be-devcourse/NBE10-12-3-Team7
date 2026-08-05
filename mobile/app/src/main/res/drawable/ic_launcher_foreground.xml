@@ -1,0 +1,40 @@
+<!--
+  런처 아이콘 전경 — 마켓온 장바구니 마크.
+
+  ## 적응형 아이콘의 규칙
+  전경은 **108x108dp 캔버스**인데, 기기 제조사가 원형·둥근사각형 등 제 마음대로 잘라 낸다.
+  안전한 영역은 가운데 **66x66dp(지름 66)** 뿐이고 바깥 21dp 는 잘려 나갈 수 있다.
+  그래서 그림을 대략 27~81 범위 안에 그린다 — 여기서 벗어나면 삼성 폰에서만 모서리가 잘리는
+  식의 기기별 사고가 난다.
+
+  ## 왜 PNG 가 아니라 벡터인가
+  `minSdk = 26` 이라 적응형 아이콘을 못 쓰는 기기가 없다. 벡터 하나면 mdpi~xxxhdpi 를 전부
+  덮으므로 해상도별 PNG 5장을 관리하지 않아도 되고, 저장소에 바이너리가 들어가지 않는다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 장바구니 몸통(사다리꼴). 아래로 갈수록 좁아지는 형태라 바구니처럼 읽힌다. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,48 L74,48 L69.5,77 Q69,80.5 65.5,80.5 L42.5,80.5 Q39,80.5 38.5,77 Z" />
+
+    <!-- 손잡이. 몸통 위에 걸치는 반원 — 획을 두껍게 해야 작은 크기에서 뭉개지지 않는다. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M44,48 L44,40 Q44,29 54,29 Q64,29 64,40 L64,48" />
+
+    <!-- 바구니 안의 물건 두 개. 중고거래 = "누군가 내놓은 물건" 을 점 두 개로 암시한다. -->
+    <path
+        android:fillColor="#E85D9E"
+        android:pathData="M47,60 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+    <path
+        android:fillColor="#E85D9E"
+        android:pathData="M61,60 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+</vector>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  원형 런처를 쓰는 런처(구형 픽셀 등)가 찾는 리소스. 내용은 `ic_launcher` 와 같다 —
+  적응형 아이콘은 어차피 시스템이 모양을 잘라 주므로 따로 그릴 것이 없다.
+
+  그래도 파일을 두는 이유: 매니페스트의 `android:roundIcon` 이 가리킬 대상이 없으면
+  일부 런처가 기본 안드로이드 아이콘으로 폴백한다.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

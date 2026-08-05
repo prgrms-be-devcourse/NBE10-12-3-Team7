@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  적응형 런처 아이콘. 배경(단색)과 전경(마크)을 따로 주면 **기기가 알아서 모양을 잘라** 준다 —
+  픽셀에서는 원형, 삼성에서는 스퀴클, 폴더블에서는 또 다른 모양.
+
+  `mipmap-anydpi-v26` 폴더에 두는 이유: API 26+ 기기만 이 파일을 읽는다.
+  이 앱은 `minSdk = 26` 이라 해상도별 PNG 폴백이 필요 없다.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <!-- 안드로이드 13+ 테마 아이콘(사용자 배경화면 색에 맞춰 단색으로 그려지는 모드) -->
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
