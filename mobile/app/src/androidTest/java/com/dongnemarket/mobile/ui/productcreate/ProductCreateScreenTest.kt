@@ -23,6 +23,7 @@ import com.dongnemarket.mobile.domain.model.MemberLocation
 import com.dongnemarket.mobile.domain.model.RegionRef
 import com.dongnemarket.mobile.ui.theme.MarketOnTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -112,6 +113,23 @@ class ProductCreateScreenTest {
 
         // Then
         composeTestRule.onNodeWithTag(submitTag).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `동네_미설정_안내에서_설정_화면으로_갈_수_있다`() {
+        // Given
+        var 설정으로이동 = false
+        composeTestRule.showCreate(
+            state = 폼상태(locations = emptyList(), regionCode = null),
+            onSetRegionClick = { 설정으로이동 = true },
+        )
+
+        // When
+        composeTestRule.onNodeWithTag("create_set_region").performClick()
+
+        // Then: 안내만 있고 갈 곳이 없으면 사용자는 앱을 껐다 켤 뿐이다.
+        // 등록을 막았으면 막힌 이유를 푸는 길도 같이 줘야 한다.
+        assertTrue(설정으로이동)
     }
 
     // ──────────────────────────── 2. 사진 ────────────────────────────
@@ -447,6 +465,7 @@ class ProductCreateScreenTest {
     private fun ComposeContentTestRule.showCreate(
         state: ProductCreateUiState,
         onBackClick: () -> Unit = {},
+        onSetRegionClick: () -> Unit = {},
         onRemoveImage: (Int) -> Unit = {},
         onThumbnailSelect: (Int) -> Unit = {},
         onTitleChange: (String) -> Unit = {},
@@ -461,6 +480,7 @@ class ProductCreateScreenTest {
                 ProductCreateContent(
                     state = state,
                     onBackClick = onBackClick,
+                    onSetRegionClick = onSetRegionClick,
                     // 사진 선택기는 시스템 화면이라 Compose 테스트가 띄울 수 없다 —
                     // 여기서는 "고른 뒤" 상태를 직접 먹이는 방식으로 검증한다.
                     onImagesPicked = {},

@@ -225,6 +225,64 @@ class CatalogRepositoryImplTest {
     // ────────────────────────── 지역 세션 캐시 ──────────────────────────
 
     @Test
+    fun `단계마다 따로 캐시한다 — 시도와 시군구는 서로 다른 요청이다`() = runTest {
+        // Given: parentCode 마다 결과가 다르다
+        coEvery { regionApi.getRegions(parentCode = null) } returns
+            envelope(listOf(지역("11", "서울특별시", level = 1, parent = null)))
+        coEvery { regionApi.getRegions(parentCode = "11") } returns
+            envelope(listOf(지역("1111", "종로구", level = 2, parent = "11")))
+
+        val repository = RegionRepositoryImpl(regionApi)
+
+        // When
+        val 시도 = repository.getRegions(null).getOrThrow()
+        val 시군구 = repository.getRegions("11").getOrThrow()
+
+        // Then: 리스트 하나로 캐시하던 예전 구조라면 시군구 조회가 시도 캐시에 막혀
+        // **서울특별시가 다시 나왔을 것**이다. 키별 캐시라야 각자 자기 것을 받는다.
+        assertEquals("서울특별시", 시도.single().displayName)
+        assertEquals("종로구", 시군구.single().displayName)
+    }
+
+    @Test
+    fun `같은 단계를 다시 열면 서버를 다시 부르지 않는다`() = runTest {
+        // Given: 드릴다운은 뒤로 가기를 반복하는 탐색이다 — 서울 → 종로구 → (뒤로) → 서울
+        var callCount = 0
+        coEvery { regionApi.getRegions(parentCode = "11") } answers {
+            callCount++
+            envelope(listOf(지역("1111", "종로구", level = 2, parent = "11")))
+        }
+        val repository = RegionRepositoryImpl(regionApi)
+
+        // When
+        repository.getRegions("11")
+        repository.getRegions("11")
+
+        // Then
+        assertEquals(1, callCount)
+    }
+
+    @Test
+    fun `공백 parentCode 는 최상위 조회와 같은 캐시를 쓴다`() = runTest {
+        // Given: 서버는 StringUtils.hasText 로 판단해 ""와 없음을 같게 본다.
+        // 캐시 키가 이 기준과 어긋나면 같은 목록을 두 번 받는다.
+        var callCount = 0
+        coEvery { regionApi.getRegions(parentCode = null) } answers {
+            callCount++
+            envelope(listOf(지역("11", "서울특별시", level = 1, parent = null)))
+        }
+        val repository = RegionRepositoryImpl(regionApi)
+
+        // When
+        repository.getRegions(null)
+        repository.getRegions("")
+        repository.getRegions("   ")
+
+        // Then
+        assertEquals(1, callCount)
+    }
+
+    @Test
     fun `동네 목록을 두 번 조회해도 229건 요청은 한 번만 나간다`() = runTest {
         // Given
         var callCount = 0
@@ -298,4 +356,14 @@ class CatalogRepositoryImplTest {
 
     private fun <T : Any> envelope(data: T) =
         ApiEnvelope(status = 200, message = "요청이 성공적으로 처리되었습니다.", data = data)
+
+    /** 계층 캐시 테스트용 지역 응답. 이름이 짧아 어느 단계인지가 테스트 본문에서 바로 읽힌다. */
+    private fun 지역(code: String, name: String, level: Int, parent: String?) = RegionResponse(
+        regionId = code.hashCode().toLong(),
+        code = code,
+        level = level,
+        parentCode = parent,
+        fullName = name,
+        displayName = name,
+    )
 }

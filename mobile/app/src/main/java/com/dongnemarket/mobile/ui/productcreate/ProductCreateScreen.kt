@@ -47,6 +47,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dongnemarket.mobile.domain.model.Category
 import com.dongnemarket.mobile.domain.model.MemberLocation
@@ -62,6 +63,7 @@ internal const val TAG_CREATE_TITLE = "create_title"
 internal const val TAG_CREATE_PRICE = "create_price"
 internal const val TAG_CREATE_DESCRIPTION = "create_description"
 internal const val TAG_CREATE_SUBMIT = "create_submit"
+internal const val TAG_CREATE_SET_REGION = "create_set_region"
 
 /**
  * 상품 등록 화면.
@@ -74,6 +76,7 @@ internal const val TAG_CREATE_SUBMIT = "create_submit"
 @Composable
 fun ProductCreateScreen(
     onCreated: (Long) -> Unit,
+    onSetRegionClick: () -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProductCreateViewModel = hiltViewModel(),
@@ -90,9 +93,26 @@ fun ProductCreateScreen(
         if (phase is CreatePhase.Done) onCreated(phase.productId)
     }
 
+    /**
+     * 동네 설정에서 돌아오면 폼을 다시 불러온다.
+     *
+     * 이게 없으면 **"동네 설정하러 가기" 가 아무 소용이 없다** — 동네를 설정하고 돌아와도
+     * 이 화면은 여전히 "동네를 먼저 설정해 주세요" 를 띄운 채로 있다.
+     * ViewModel 이 `init` 에서 한 번만 조회하고, 백스택에 남아 있어 `init` 이 다시 돌지 않기 때문이다.
+     * (홈에서 같은 이유로 등록한 상품이 안 보였던 것과 정확히 같은 함정이다.)
+     *
+     * 이미 입력 중이면 다시 부르지 않는다 — 카테고리를 다시 받는 사이 사용자가 고른 값이
+     * 초기화될 이유가 없고, 애초에 그때는 동네가 이미 있다.
+     */
+    LifecycleResumeEffect(Unit) {
+        if (uiState.hasNoRegion) viewModel.loadForm()
+        onPauseOrDispose { }
+    }
+
     ProductCreateContent(
         state = uiState,
         onBackClick = onBackClick,
+        onSetRegionClick = onSetRegionClick,
         onImagesPicked = viewModel::onImagesPicked,
         onRemoveImage = viewModel::onRemoveImage,
         onThumbnailSelect = viewModel::onThumbnailSelect,
@@ -116,6 +136,7 @@ fun ProductCreateScreen(
 fun ProductCreateContent(
     state: ProductCreateUiState,
     onBackClick: () -> Unit,
+    onSetRegionClick: () -> Unit,
     onImagesPicked: (List<String>) -> Unit,
     onRemoveImage: (Int) -> Unit,
     onThumbnailSelect: (Int) -> Unit,
@@ -188,7 +209,7 @@ fun ProductCreateContent(
 
                 // 동네가 없으면 regionCode 를 만들 수 없어 등록이 원천적으로 불가능하다.
                 // 빈 폼을 보여 주고 제출에서 막으면 사용자는 왜 안 되는지 알 수 없다.
-                state.hasNoRegion -> NoRegionNotice()
+                state.hasNoRegion -> NoRegionNotice(onSetRegionClick = onSetRegionClick)
 
                 else -> ProductCreateForm(
                     state = state,
@@ -382,9 +403,17 @@ private fun FieldSection(
     }
 }
 
-/** 동네 미설정 안내. 앱에 동네 설정 화면이 아직 없어 "어디서 설정하라"고 말할 수 없다. */
+/**
+ * 동네 미설정 안내.
+ *
+ * **막다른 길로 두지 않는다** — 안내만 있고 갈 곳이 없으면 사용자는 앱을 껐다 켤 뿐이다.
+ * 여기서 바로 동네 설정으로 보내고, 돌아오면 폼이 열린다.
+ */
 @Composable
-private fun NoRegionNotice(modifier: Modifier = Modifier) {
+private fun NoRegionNotice(
+    onSetRegionClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -395,10 +424,18 @@ private fun NoRegionNotice(modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.titleMedium,
         )
         Text(
-            text = "상품은 내 동네에만 등록할 수 있어요.\n동네 설정 기능은 준비 중이에요.",
+            text = "상품은 내 동네에만 등록할 수 있어요.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Button(
+            onClick = onSetRegionClick,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .testTag(TAG_CREATE_SET_REGION),
+        ) {
+            Text("동네 설정하러 가기")
+        }
     }
 }
 
@@ -503,6 +540,7 @@ private fun PreviewShell(state: ProductCreateUiState) {
     ProductCreateContent(
         state = state,
         onBackClick = {},
+        onSetRegionClick = {},
         onImagesPicked = {},
         onRemoveImage = {},
         onThumbnailSelect = {},

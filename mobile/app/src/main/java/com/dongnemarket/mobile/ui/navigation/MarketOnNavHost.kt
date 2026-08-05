@@ -12,6 +12,7 @@ import com.dongnemarket.mobile.ui.chat.ChatRoomScreen
 import com.dongnemarket.mobile.ui.home.HomeScreen
 import com.dongnemarket.mobile.ui.login.LoginScreen
 import com.dongnemarket.mobile.ui.productcreate.ProductCreateScreen
+import com.dongnemarket.mobile.ui.region.RegionSettingScreen
 import com.dongnemarket.mobile.ui.productdetail.ProductDetailScreen
 
 /**
@@ -54,12 +55,24 @@ fun MarketOnNavHost(
                 },
                 onChatTabClick = { navController.navigate(MarketOnRoutes.CHAT_LIST) },
                 onCreateClick = { navController.navigate(MarketOnRoutes.PRODUCT_CREATE) },
+                onRegionClick = { navController.navigate(MarketOnRoutes.REGION_SETTING) },
+            )
+        }
+
+        // 내 동네 설정 — Unit 6
+        composable(MarketOnRoutes.REGION_SETTING) {
+            RegionSettingScreen(
+                // 저장하면 온 곳으로 돌아간다. 홈에서 왔으면 홈이 ON_RESUME 에 목록을 다시 받고,
+                // 상품 등록에서 왔으면 그 화면이 내 동네를 다시 불러 칩이 채워진다.
+                onSaved = { navController.popBackStack() },
+                onBackClick = { navController.popBackStack() },
             )
         }
 
         // 상품 등록 — Unit 5
         composable(MarketOnRoutes.PRODUCT_CREATE) {
             ProductCreateScreen(
+                onSetRegionClick = { navController.navigate(MarketOnRoutes.REGION_SETTING) },
                 // 등록에 성공하면 방금 만든 상품 상세로 보낸다.
                 onCreated = { productId ->
                     navController.navigate(MarketOnRoutes.productDetail(productId)) {

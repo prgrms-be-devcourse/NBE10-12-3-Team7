@@ -40,6 +40,25 @@ data class Region(
     val isTopLevel: Boolean
         get() = parentCode == null
 
+    /**
+     * **내 동네·상품 등록에 실제로 쓸 수 있는 지역인가** — 읍·면·동만 가능하다.
+     *
+     * 서버가 양쪽에 같은 제약을 걸어 뒀다:
+     * `ProductService.getRequiredDongRegion` · `MemberLocationService.getRequiredDongRegions`
+     * 둘 다 `level != 3` 이면 400 `INVALID_INPUT_VALUE` 다.
+     *
+     * 화면은 이 값으로 "더 파고들 항목" 과 "고를 항목" 을 가른다.
+     * 이 판단이 없으면 사용자가 시·도나 시·군·구를 고를 수 있게 되고,
+     * 그러면 저장 버튼을 눌러야 비로소 400 을 만난다 — 이유도 안 알려 주는 400 이다.
+     */
+    val isSelectable: Boolean
+        get() = level == DONG_LEVEL
+
+    private companion object {
+        /** 읍·면·동 계층. 시·도 1 · 시·군·구 2 · 읍·면·동 3. */
+        const val DONG_LEVEL = 3
+    }
+
     /** 다른 응답에 박혀 오는 형태로 변환. 내 동네를 고른 직후처럼 즉시 표시해야 할 때 쓴다. */
     fun toRef(): RegionRef = RegionRef(code = code, name = displayName, fullName = fullName)
 }
