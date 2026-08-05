@@ -16,6 +16,9 @@ object MarketOnRoutes {
     /** 상품 등록. 경로 인자가 없다 — 무엇을 등록할지는 화면 안에서 정한다. */
     const val PRODUCT_CREATE = "productCreate"
 
+    /** 내 동네 설정. 홈과 상품 등록 두 곳에서 들어온다. */
+    const val REGION_SETTING = "regionSetting"
+
     /** 인자 이름 — NavHost 의 argument 선언과 화면에서 꺼낼 때 같은 값을 써야 한다. */
     const val ARG_PRODUCT_ID = "productId"
     const val ARG_ROOM_ID = "roomId"

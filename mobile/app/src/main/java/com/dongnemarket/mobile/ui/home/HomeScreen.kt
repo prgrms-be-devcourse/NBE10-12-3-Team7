@@ -71,6 +71,7 @@ fun HomeScreen(
     onProductClick: (Long) -> Unit,
     onChatTabClick: () -> Unit,
     onCreateClick: () -> Unit,
+    onRegionClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -89,6 +90,7 @@ fun HomeScreen(
         onProductClick = onProductClick,
         onChatTabClick = onChatTabClick,
         onCreateClick = onCreateClick,
+        onRegionClick = onRegionClick,
         onSearch = viewModel::onSearch,
         onCategorySelect = viewModel::onCategorySelect,
         onLoadMore = viewModel::onLoadMore,
@@ -111,6 +113,7 @@ fun HomeContent(
     onProductClick: (Long) -> Unit,
     onChatTabClick: () -> Unit,
     onCreateClick: () -> Unit,
+    onRegionClick: () -> Unit,
     onSearch: (String) -> Unit,
     onCategorySelect: (Long?) -> Unit,
     onLoadMore: () -> Unit,
@@ -159,6 +162,7 @@ fun HomeContent(
                 is HomeUiState.Success -> HomeGrid(
                     state = state,
                     onProductClick = onProductClick,
+                    onRegionClick = onRegionClick,
                     onSearch = onSearch,
                     onCategorySelect = onCategorySelect,
                     onLoadMore = onLoadMore,
@@ -179,6 +183,7 @@ fun HomeContent(
 private fun HomeGrid(
     state: HomeUiState.Success,
     onProductClick: (Long) -> Unit,
+    onRegionClick: () -> Unit,
     onSearch: (String) -> Unit,
     onCategorySelect: (Long?) -> Unit,
     onLoadMore: () -> Unit,
@@ -216,7 +221,7 @@ private fun HomeGrid(
     ) {
         // 1) 히어로 — 브랜드 카피 + 내 동네. 숫자 통계는 넣지 않는다(통계 API 없음).
         item(span = { GridItemSpan(maxLineSpan) }) {
-            HomeHeroSection(region = state.region)
+            HomeHeroSection(region = state.region, onRegionClick = onRegionClick)
         }
 
         // 2) 검색바 — 확정(IME 검색) 시에만 조회한다.
@@ -284,6 +289,7 @@ private fun HomeContentPreview() {
             onProductClick = {},
             onChatTabClick = {},
             onCreateClick = {},
+            onRegionClick = {},
             onSearch = {},
             onCategorySelect = {},
             onLoadMore = {},
@@ -301,6 +307,7 @@ private fun HomeContentNoRegionPreview() {
             onProductClick = {},
             onChatTabClick = {},
             onCreateClick = {},
+            onRegionClick = {},
             onSearch = {},
             onCategorySelect = {},
             onLoadMore = {},
@@ -318,6 +325,7 @@ private fun HomeContentEmptyPreview() {
             onProductClick = {},
             onChatTabClick = {},
             onCreateClick = {},
+            onRegionClick = {},
             onSearch = {},
             onCategorySelect = {},
             onLoadMore = {},
@@ -335,6 +343,7 @@ private fun HomeContentLoadingPreview() {
             onProductClick = {},
             onChatTabClick = {},
             onCreateClick = {},
+            onRegionClick = {},
             onSearch = {},
             onCategorySelect = {},
             onLoadMore = {},
@@ -352,6 +361,7 @@ private fun HomeContentErrorPreview() {
             onProductClick = {},
             onChatTabClick = {},
             onCreateClick = {},
+            onRegionClick = {},
             onSearch = {},
             onCategorySelect = {},
             onLoadMore = {},

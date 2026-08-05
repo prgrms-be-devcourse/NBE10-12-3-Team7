@@ -166,7 +166,8 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * 홈이 다시 화면 앞으로 나왔다(상세·등록에서 돌아옴). **목록만** 조용히 다시 받는다.
+     * 홈이 다시 화면 앞으로 나왔다(상세·등록·동네 설정에서 돌아옴).
+     * **내 동네를 다시 확인하고 목록을 새로 받는다.**
      *
      * ### 이게 없으면 생기는 일
      * 상품을 등록하고 홈으로 돌아오면 **방금 올린 물건이 목록에 없다.**
@@ -176,10 +177,19 @@ class HomeViewModel @Inject constructor(
      *
      * 등록만의 문제가 아니다. 상세에서 찜을 누르거나 조회수가 오른 것도 반영되지 않는다.
      *
-     * ### 왜 [load] 가 아니라 [loadFirstPage] 인가
+     * ### ⚠️ 왜 목록만 다시 받으면 안 되는가
+     * 처음에는 [loadFirstPage] 만 불렀다. 카테고리·동네는 자주 바뀌지 않는다고 봤기 때문이다.
+     * **동네 설정 화면이 생기면서 그 전제가 깨졌다** — 동네를 바꾸고 돌아와도
+     * 헤더는 "동네를 설정해 주세요" 그대로였고 목록도 여전히 전국 조회였다.
+     * [loadFirstPage] 가 쓰는 `filterRegions`·`region` 은 [load] 에서만 채워지기 때문이다.
+     * (2026-08-04 동네 설정 실기 검수에서 발견.)
+     *
+     * 그래서 **내 동네만 다시 받아** 필터와 헤더를 갱신한 뒤 목록을 조회한다.
+     * 카테고리까지 다시 받지는 않는다 — 그건 앱에서 바꿀 수 없는 마스터 데이터다.
+     *
+     * ### 왜 [load] 를 부르지 않는가
      * [load] 는 화면 전체를 `Loading` 으로 되돌려 카테고리 칩·검색어까지 잠깐 사라지게 한다.
-     * 돌아올 때마다 화면이 깜빡이면 오히려 고장처럼 보인다. 카테고리·동네는 자주 바뀌지 않으므로
-     * 목록만 새로 받는 편이 맞다.
+     * 돌아올 때마다 깜빡이면 오히려 고장처럼 보인다.
      *
      * ### 첫 진입에서 두 번 부르지 않기
      * `bootstrapped` 가 false 면 [init] 의 [load] 가 아직 진행 중이라는 뜻이다.
@@ -187,7 +197,18 @@ class HomeViewModel @Inject constructor(
      */
     fun onScreenResumed() {
         if (!snapshot.bootstrapped) return
-        loadFirstPage()
+
+        viewModelScope.launch {
+            // 동네 조회가 실패하면 이전 필터를 유지한다 — 실패를 "동네 없음" 으로 읽으면
+            // 멀쩡히 설정된 사용자가 갑자기 전국 조회를 보게 된다.
+            memberRepository.getMyLocations().onSuccess { locations ->
+                snapshot = snapshot.copy(
+                    region = locations.activeRegionName(),
+                    filterRegions = locations.toFilterRegionCodes(),
+                )
+            }
+            loadFirstPage()
+        }
     }
 
     // ──────────────────────────── 내부 로딩 ────────────────────────────

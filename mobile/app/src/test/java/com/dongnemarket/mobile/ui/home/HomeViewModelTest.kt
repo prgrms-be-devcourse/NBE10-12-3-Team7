@@ -637,6 +637,49 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `동네를 설정하고 돌아오면 헤더와 필터가 새 동네로 바뀐다`() = runTest {
+        // Given: 동네 미설정 상태로 홈에 들어왔다(전국 조회)
+        coEvery { memberRepository.getMyLocations() } returns Result.success(emptyList())
+        coEvery { categoryRepository.getCategories() } returns Result.success(카테고리_4종)
+        coEvery { productRepository.getProducts(any(), any(), any()) } returns Result.success(첫페이지_마지막)
+        val viewModel = 홈화면을_연다()
+        assertNull("처음에는 동네가 없다", (viewModel.uiState.value as HomeUiState.Success).region)
+
+        // 그 사이 사용자가 동네 설정 화면에서 강남구를 저장했다
+        coEvery { memberRepository.getMyLocations() } returns Result.success(내동네_강남)
+
+        // When: 홈으로 돌아온다
+        viewModel.onScreenResumed()
+
+        // Then: 목록만 다시 받으면 헤더는 "동네를 설정해 주세요" 그대로고 목록도 전국 조회다.
+        // filterRegions·region 은 첫 로드에서만 채워지기 때문이다.
+        // (2026-08-04 동네 설정 실기 검수에서 실제로 이 증상이 나왔다.)
+        val state = viewModel.uiState.value as HomeUiState.Success
+        assertEquals("강남구", state.region)
+        coVerify { productRepository.getProducts(eq(listOf("11680")), isNull(), any()) }
+    }
+
+    @Test
+    fun `복귀 시 동네 조회가 실패하면 쓰던 필터를 유지한다`() = runTest {
+        // Given: 강남구로 잘 보고 있던 사용자
+        coEvery { memberRepository.getMyLocations() } returns Result.success(내동네_강남)
+        coEvery { categoryRepository.getCategories() } returns Result.success(카테고리_4종)
+        coEvery { productRepository.getProducts(any(), any(), any()) } returns Result.success(첫페이지_마지막)
+        val viewModel = 홈화면을_연다()
+
+        // 잠깐 네트워크가 끊긴 사이 복귀했다
+        coEvery { memberRepository.getMyLocations() } returns Result.failure(AppError.Network())
+
+        // When
+        viewModel.onScreenResumed()
+
+        // Then: 실패를 "동네 없음" 으로 읽으면 멀쩡히 설정된 사용자가 갑자기 전국 조회를 보게 된다
+        val state = viewModel.uiState.value as HomeUiState.Success
+        assertEquals("강남구", state.region)
+        coVerify { productRepository.getProducts(eq(listOf("11680")), isNull(), any()) }
+    }
+
+    @Test
     fun `복귀해도 사용자가 고른 카테고리 칩은 그대로 유지된다`() = runTest {
         // Given: 카테고리 필터를 걸어 둔 상태
         coEvery { memberRepository.getMyLocations() } returns Result.success(내동네_강남)

@@ -3,7 +3,9 @@ package com.dongnemarket.mobile.ui.home
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasProgressBarRangeInfo
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -266,23 +268,25 @@ class HomeScreenTest {
     // ──────────────────────────── 6. 상품 등록 진입 ────────────────────────────
 
     /**
-     * ⚠️ 이 테스트는 **시맨틱 병합** 때문에 다른 테스트와 단정 방식이 다르다.
+     * ⚠️ **시맨틱 병합** 때문에 단정 방식이 다르다. 이 파일에서 두 번 걸린 함정이다.
      *
-     * `ExtendedFloatingActionButton` 은 `MergeDescendants = true` 라 안의 아이콘·텍스트가
-     * **버튼 노드 하나로 합쳐진다.** 그래서 기본(병합) 트리에는 "글쓰기" 텍스트 노드가
-     * 아예 존재하지 않고, `onNodeWithText("글쓰기")` 는 아무것도 찾지 못한다
-     * (Compose 가 오류 메시지로 직접 알려 준다 — "the unmerged tree contains 1 node that matches").
-     * → 라벨을 검사하려면 `useUnmergedTree = true` 로 병합 전 트리를 봐야 한다.
+     * `ExtendedFloatingActionButton`(그리고 `Modifier.clickable` 이 붙은 모든 것)은
+     * `MergeDescendants = true` 라 **안의 아이콘·텍스트가 노드 하나로 합쳐진다.**
+     * 그래서 기본(병합) 트리에는 "글쓰기" 텍스트 노드가 아예 존재하지 않고,
+     * `onNodeWithText("글쓰기")` 는 아무것도 찾지 못한다
+     * (Compose 가 직접 알려 준다 — "the unmerged tree contains 1 node that matches").
      *
-     * 태그 노드에 `assertIsDisplayed()` 를 쓰지 않는 이유는 별개다.
-     * 그 단정만 실패하는데 **버튼은 실제로 보인다**:
+     * 병합된 노드에 텍스트를 물으려면 `assertTextContains`,
+     * 자손 노드를 직접 짚으려면 `useUnmergedTree = true` 를 쓴다.
+     *
+     * 태그 노드에 `assertIsDisplayed()` 를 쓰지 않는 이유는 **별개이고 아직 모른다.**
+     * 그 단정만 실패하는데 버튼은 실제로 보인다:
      *  - `printToLog` 좌표 (747,1938)–(1038,2085)px, 루트 (0,0)–(1080,2400)px → 화면 안쪽
      *  - 에뮬레이터 스크린샷에 우하단 `＋ 글쓰기` 가 그대로 찍힘(2026-08-04 실기 검수)
      *  - 같은 노드에 `performClick` 통과(아래 테스트)
      *  - **병합 전 라벨 노드는 `assertIsDisplayed` 를 통과한다**(이 테스트 마지막 줄)
      *
-     * 병합된 FAB 노드에서만 그 단정이 왜 실패하는지는 규명하지 못했다.
-     * 모르는 것을 아는 척하는 대신, **표시 여부는 실제로 보이는 라벨로 검사**하고
+     * 모르는 것을 아는 척하는 대신 **표시 여부는 실제로 보이는 라벨로 검사**하고
      * 태그 노드는 존재만 확인한다.
      */
     @Test
@@ -331,6 +335,48 @@ class HomeScreenTest {
         composeTestRule.onNodeWithTag("home_create_fab").assertDoesNotExist()
     }
 
+    // ──────────────────────────── 7. 동네 설정 진입 ────────────────────────────
+
+    @Test
+    fun `동네를_설정하지_않았으면_히어로가_설정을_권한다`() {
+        // Given: 동네 미설정(getMyLocations 가 빈 리스트)
+        composeTestRule.showHome(state = successState(products = fourProducts()).copy(region = null))
+
+        // Then: 예전에는 줄을 통째로 감췄다 — 그러면 홈이 왜 전국 조회인지,
+        // 상품 등록은 왜 막히는지 사용자가 알 길이 없다.
+        composeTestRule.onNodeWithTag("home_region").assertTextContains("동네를 설정해 주세요")
+    }
+
+    @Test
+    fun `히어로의_동네를_누르면_동네_설정_이동_의도가_전달된다`() {
+        // Given
+        var regionClicked = false
+        composeTestRule.showHome(
+            state = successState(products = fourProducts()),
+            onRegionClick = { regionClicked = true },
+        )
+
+        // When
+        composeTestRule.onNodeWithTag("home_region").performClick()
+
+        // Then
+        assertTrue(regionClicked)
+    }
+
+    @Test
+    fun `동네가_설정돼_있으면_그_이름이_보인다`() {
+        // Given
+        composeTestRule.showHome(state = successState(products = fourProducts()))
+
+        // Then: "강남구" 는 히어로 말고 **상품 카드 4장에도** 찍힌다(카드가 지역을 보여 준다) →
+        // `onNodeWithText` 로는 5개가 걸려 무엇을 검사했는지 알 수 없다. 태그로 히어로를 짚는다.
+        //
+        // 태그 노드에 곧바로 텍스트를 물을 수 있는 이유: 히어로의 동네 줄은 `Modifier.clickable` 이
+        // 붙어 있고, **clickable 은 자손 시맨틱을 병합한다**(`MergeDescendants = true`).
+        // 그래서 안의 Text 가 이 노드로 합쳐져 있다.
+        composeTestRule.onNodeWithTag("home_region").assertTextContains("강남구")
+    }
+
     // ──────────────────────────── 테스트 도우미 ────────────────────────────
 
     private fun ComposeContentTestRule.showHome(
@@ -338,6 +384,7 @@ class HomeScreenTest {
         onProductClick: (Long) -> Unit = {},
         onChatTabClick: () -> Unit = {},
         onCreateClick: () -> Unit = {},
+        onRegionClick: () -> Unit = {},
         onSearch: (String) -> Unit = {},
         onCategorySelect: (Long?) -> Unit = {},
         onRetry: () -> Unit = {},
@@ -349,6 +396,7 @@ class HomeScreenTest {
                     onProductClick = onProductClick,
                     onChatTabClick = onChatTabClick,
                     onCreateClick = onCreateClick,
+                    onRegionClick = onRegionClick,
                     onSearch = onSearch,
                     onCategorySelect = onCategorySelect,
                     // 무한스크롤 트리거는 이 파일의 관심사가 아니다(스크롤 위치에 좌우돼 불안정하다).
