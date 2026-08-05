@@ -99,6 +99,14 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop # dev 는 update — 기동마다 새 스키마로
 
       APP_SEED_DEMO: "false" # 데모 데이터가 목록·검색 단언을 흔든다
+      APP_SEED_DEMO_PASSWORD: unused # demo 가 false 라 안 읽히지만, 켤 때를 위해 자리를 남긴다
+
+      # 관리자 시더는 dev 프로파일 + 이 스위치가 둘 다 켜져야 돈다(운영에서 관리자가 자동 생성되던
+      # 문제를 막느라 그렇게 조였다). e2e 는 관리자 시나리오가 있어 켠다.
+      # ⚠️ 비밀번호 기본값은 support/env.ts 의 ADMIN_PASSWORD 와 **같아야 한다** — 한쪽만 바꾸면
+      #    관리자 로그인이 전부 401 이 된다. 일회성 로컬 컨테이너라 값 자체는 비밀이 아니다.
+      APP_SEED_ADMIN: "true"
+      APP_SEED_ADMIN_PASSWORD: ${E2E_ADMIN_PASSWORD:-e2e-admin-pw}
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health # readiness 확인용
 
       # e2e 전용 — 워커 4개가 같은 IP 라 기본 60req/10s 로는 429 가 난다. dev·prod 로 복사 금지.

@@ -116,6 +116,21 @@ e2e/
 | `otherUser` | 또 다른 회원. "남의 리소스 → 403" 검증용 |
 | `admin` | `AdminSeeder` 가 만든 관리자. 제재·대시보드 검증용 |
 
+> ⚠️ `admin` 은 **공짜로 생기지 않는다.** `AdminSeeder` 는 dev 프로파일 + `APP_SEED_ADMIN=true` 일 때만
+> 돌고, 비밀번호도 `APP_SEED_ADMIN_PASSWORD` 로 받는다(운영에서 관리자가 자동 생성되던 문제를 막느라
+> 조였다 — `infra/infra.md` '관리자 계정'). `docker-compose.e2e.yml` 이 둘 다 넣어주므로
+> `npm run e2e:up` 으로 띄우면 그대로 동작한다.
+>
+> 호스트에서 `./gradlew bootRun` 으로 띄운 백엔드에 붙일 때(`E2E_BACKEND_URL=http://localhost:8080`)는
+> **직접 켜야 한다.** 안 켜면 관리자 시나리오만 401 로 죽는다:
+>
+> ```bash
+> APP_SEED_ADMIN=true APP_SEED_ADMIN_PASSWORD=e2e-admin-pw ./gradlew bootRun
+> ```
+>
+> 비밀번호 기본값은 `support/env.ts` 의 `ADMIN_PASSWORD` 와 compose 양쪽에 같은 값으로 있다.
+> 바꾸려면 두 곳을 함께 고치거나 `E2E_ADMIN_PASSWORD` 를 셸에 내보낸다.
+
 ```ts
 test('내가 만든 상품만 수정할 수 있다', async ({ user, otherUser }) => {
   const res = await user.api.post('/api/products', { data: { ... } });

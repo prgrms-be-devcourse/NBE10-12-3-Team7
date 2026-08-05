@@ -46,7 +46,10 @@
   transition: transform .1s, color .1s;
 }
 .star:hover { transform: scale(1.08); }
-.star.on { color: var(--amber); }
+.star.on { color: var(--ok); }
+/* 다크 모드에서는 별만 채도를 살짝 올린다. --ok 자체를 바꾸면 완료 배지(.check)와 앱 전역의
+   다른 "성공" 표시까지 함께 바뀌므로, 별 색상만 별도 값으로 덮어쓴다(라이트 모드는 --ok 그대로). */
+:global([data-theme="dark"]) .star.on { color: hsl(150deg 65% 58%); }
 .hint {
   min-height: 18px;
   font-size: 13px;
