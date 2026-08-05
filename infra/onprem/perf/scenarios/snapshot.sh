@@ -64,7 +64,16 @@ declare -a PATHS=(
 PROBE_ADMIN="${PROBE_ADMIN:-false}"
 ADMIN_SAMPLES="${ADMIN_SAMPLES:-3}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-admin@dongnemarket.com}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin1234!}"
+# 비밀번호에는 기본값을 두지 않는다. 예전 기본값(소스 하드코딩 + public 리포)이 그대로 운영
+# 관리자 자격증명이었다. onprem 은 prod 프로파일이라 AdminSeeder 가 아예 없으므로, 관리자는
+# 수동 생성한 계정이다 — 그 비밀번호를 아는 사람만 PROBE_ADMIN 을 켤 수 있어야 한다.
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+if [[ "$PROBE_ADMIN" == "true" && -z "$ADMIN_PASSWORD" ]]; then
+  echo "PROBE_ADMIN=true 인데 ADMIN_PASSWORD 가 없습니다." >&2
+  echo "  ADMIN_PASSWORD=... PROBE_ADMIN=true ./scenarios/snapshot.sh <계단>" >&2
+  echo "  (관리자 계정 수동 생성 절차는 infra/infra.md 의 '관리자 계정' 절 참고)" >&2
+  exit 1
+fi
 
 declare -a ADMIN_NAMES=(admin_products admin_members admin_dashboard)
 declare -a ADMIN_PATHS=(

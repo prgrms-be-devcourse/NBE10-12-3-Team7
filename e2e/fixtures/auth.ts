@@ -1,5 +1,6 @@
 import type { APIRequestContext } from '@playwright/test';
 import { unwrap } from '../support/api';
+import { ADMIN_PASSWORD } from '../support/env';
 import { readEmailVerificationCode } from '../support/redis';
 import { TEST_PASSWORD, uniqueEmail, uniqueNickname } from '../support/unique';
 
@@ -100,8 +101,12 @@ export function bearer(accessToken: string): Record<string, string> {
 }
 
 /**
- * 관리자 계정. `AdminSeeder` 가 앱 기동 시 자동으로 만들어준다(test 프로파일 제외).
- * 값이 바뀌면 AdminSeeder.java 의 상수와 함께 고쳐야 한다.
+ * 관리자 계정. `AdminSeeder` 가 만든다 — 단 **dev 프로파일 + `APP_SEED_ADMIN=true`** 일 때만이다
+ * (docker-compose.e2e.yml 이 그 두 조건과 비밀번호를 함께 넣는다). 예전처럼 "test 만 아니면
+ * 항상 생기는" 계정이 아니므로, 호스트 백엔드로 e2e 를 돌릴 때도 같은 스위치를 켜야 한다.
+ *
+ * 비밀번호는 [ADMIN_PASSWORD] 한 곳에서만 읽는다 — compose 와 기본값이 같아야 한다.
+ * 이메일은 비밀이 아니라 상수로 둔다.
  *
  * ⚠️ 이 계정은 **전역 공유 자원**이다. 여러 테스트가 동시에 admin 으로 로그인하는 것은 괜찮지만,
  *    제재·삭제 같은 쓰기 작업의 *대상*은 반드시 그 테스트가 새로 만든 회원이어야 한다.
@@ -109,7 +114,7 @@ export function bearer(accessToken: string): Record<string, string> {
  */
 export const ADMIN_ACCOUNT = {
   email: 'admin@dongnemarket.com',
-  password: 'admin1234!',
+  password: ADMIN_PASSWORD,
 } as const;
 
 /** 시더가 만든 관리자로 로그인한다. */

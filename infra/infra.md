@@ -167,6 +167,36 @@ docker run --rm --network dongnemarket-onprem_default \
   --endpoint-url http://rustfs:9000 s3 mb s3://marketon-images
 ```
 
+### 관리자 계정
+
+**운영(prod)에는 관리자 시더가 없다.** `AdminSeeder`는 `@Profile("dev")` + `APP_SEED_ADMIN` 스위치라
+prod 프로파일인 온프레미스·AWS에서는 빈 자체가 만들어지지 않는다.
+
+> 예전에는 `@Profile("!test")`였다. "test만 아니면 전부"라서 **운영에서도 관리자가 자동 생성**됐고,
+> 비밀번호가 소스에 평문으로 있었다. 리포가 public이라 배포된 서버에 누구나 관리자로 들어올 수 있었다.
+> 시더를 dev로 좁히고 비밀번호를 env로 뺀 것이 그 대응이다.
+
+배포 후 1회, 아래 순서로 만든다. **비밀번호 해시를 손으로 만들지 않는 것**이 요점이다 —
+앱의 인코더를 그대로 쓰므로 알고리즘·스트렝스가 어긋날 일이 없다.
+
+```bash
+# 1) 평범한 회원으로 가입한다 (웹 UI 또는 /api/auth/signup — 이메일 인증까지 정상 통과)
+# 2) 그 계정만 관리자로 승격한다
+docker compose exec mysql mysql -udongne -p dongne_market \
+  -e "UPDATE members SET role='ROLE_ADMIN' WHERE email='<가입한 이메일>';"
+```
+
+승격 후 확인:
+
+```bash
+docker compose exec mysql mysql -udongne -p dongne_market \
+  -e "SELECT email, role, status FROM members WHERE role='ROLE_ADMIN';"
+```
+
+`role`은 `@Enumerated(EnumType.STRING)`이라 문자열 `ROLE_ADMIN`이 그대로 들어간다.
+부하테스트에서 관리자 화면을 재려면(`PROBE_ADMIN=true`) 이 계정의 비밀번호를
+`ADMIN_PASSWORD` 환경변수로 넘긴다 — 스크립트에 기본값은 없다.
+
 ### 포트
 
 | 포트 | 서비스 | 비고 |

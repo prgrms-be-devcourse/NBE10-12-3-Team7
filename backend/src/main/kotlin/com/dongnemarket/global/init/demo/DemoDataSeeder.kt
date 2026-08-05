@@ -18,6 +18,7 @@ import com.dongnemarket.report.entity.ReportReason
 import com.dongnemarket.report.entity.ReportStatus
 import com.dongnemarket.report.repository.ReportRepository
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Profile
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -34,7 +35,10 @@ import java.math.BigDecimal
  *
  * ⚠️ `@Profile("!test")` + `@ConditionalOnProperty` 라 테스트가 이 클래스를 한 번도 실행하지 않는다.
  * 전환의 방어선이 컴파일러뿐이므로 `app.seed.demo=true` 로 앱을 띄워 수동 확인해야 한다.
- * `member` 도메인이 아직 Java 라 `Member.createUser/createAdmin` 은 플랫폼 타입으로 다룬다.
+ *
+ * ⚠️ 이 시더는 `admin2@dongnemarket.com` 을 **두 번째 관리자**로 만든다. 그래서 데모 데이터인데도
+ * 비밀번호를 소스에 두지 않고 `APP_SEED_DEMO_PASSWORD` 로 받는다. 계정마다 다를 이유가 없어
+ * 6명이 같은 비밀번호를 쓴다.
  */
 @Component
 @Profile("!test")
@@ -47,7 +51,15 @@ class DemoDataSeeder(
     private val commentRepository: CommentRepository,
     private val reportRepository: ReportRepository,
     private val passwordEncoder: PasswordEncoder,
+    @param:Value("\${app.seed.demo-password}") private val demoPassword: String,
 ) : DataSeeder {
+    /** 빈 문자열로 넘어오는 경로(compose 의 미설정 변수)를 막는다 — AdminSeeder 와 같은 이유다. */
+    init {
+        require(demoPassword.isNotBlank()) {
+            "app.seed.demo-password 가 비어 있다. APP_SEED_DEMO_PASSWORD 를 설정하거나 APP_SEED_DEMO 를 꺼라."
+        }
+    }
+
     override fun order(): Int = 30
 
     @Transactional
@@ -58,20 +70,19 @@ class DemoDataSeeder(
         }
 
         // ── 2단계: 회원 6명 ──────────────────────────────
-        val userPw = passwordEncoder.encode("user1234!")
-        val adminPw = passwordEncoder.encode("admin1234!")
+        val encodedPw = passwordEncoder.encode(demoPassword)
 
-        val user01 = memberRepository.save(Member.createUser("user01@dongnemarket.com", userPw, "상민"))
-        val user02 = memberRepository.save(Member.createUser("user02@dongnemarket.com", userPw, "지훈"))
-        val user03 = memberRepository.save(Member.createUser("user03@dongnemarket.com", userPw, "민서"))
+        val user01 = memberRepository.save(Member.createUser("user01@dongnemarket.com", encodedPw, "상민"))
+        val user02 = memberRepository.save(Member.createUser("user02@dongnemarket.com", encodedPw, "지훈"))
+        val user03 = memberRepository.save(Member.createUser("user03@dongnemarket.com", encodedPw, "민서"))
 
-        val user04 = memberRepository.save(Member.createUser("user04@dongnemarket.com", userPw, "철수"))
+        val user04 = memberRepository.save(Member.createUser("user04@dongnemarket.com", encodedPw, "철수"))
         user04.changeStatus(MemberStatus.SUSPENDED) // 정지
 
-        val user05 = memberRepository.save(Member.createUser("user05@dongnemarket.com", userPw, "영희"))
+        val user05 = memberRepository.save(Member.createUser("user05@dongnemarket.com", encodedPw, "영희"))
         user05.changeStatus(MemberStatus.DELETED) // 소프트삭제(deletedAt 자동)
 
-        memberRepository.save(Member.createAdmin("admin2@dongnemarket.com", adminPw, "부관리자"))
+        memberRepository.save(Member.createAdmin("admin2@dongnemarket.com", encodedPw, "부관리자"))
 
         // ── 3단계: 상품 6건 (기존 카테고리 8종을 이름으로 재사용) ──
         // getValue 는 없으면 NoSuchElementException 을 던진다. Map.get 의 `Category?` 는

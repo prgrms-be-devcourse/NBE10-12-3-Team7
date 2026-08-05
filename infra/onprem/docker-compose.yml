@@ -140,7 +140,11 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-validate}
       # 데이터 적재 스위치. 프로파일이 아니라 env로 켠다 — 프로파일은 "어느 환경인가"만 표현한다.
       # 기본 꺼짐. 켜면 데모 데이터(회원 6·상품 6·댓글 5·신고 5)가 기동 시 1회 적재된다(멱등).
+      # 비밀번호를 빈 값으로 두고 켜면 앱이 기동 단계에서 거부한다(빈 비밀번호 계정 방지).
+      # 관리자 계정 시더는 여기 없다 — dev 프로파일 전용이라 prod 인 이 스택에는 빈이 없다.
+      # 관리자는 배포 후 수동 생성한다(infra/infra.md '관리자 계정' 절).
       APP_SEED_DEMO: ${APP_SEED_DEMO:-false}
+      APP_SEED_DEMO_PASSWORD: ${APP_SEED_DEMO_PASSWORD:-}
       DB_URL: jdbc:mysql://mysql:3306/dongne_market?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
       DB_USERNAME: ${DB_USERNAME:-dongne}
       DB_PASSWORD: ${DB_PASSWORD:-dongne1234}
