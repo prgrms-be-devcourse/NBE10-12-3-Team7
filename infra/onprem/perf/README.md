@@ -1,5 +1,8 @@
 # perf — 온프레미스 스택 성능 검증
 
+> 상위: [../README.md](../README.md) · [../../infra.md](../../infra.md)
+> 관련: [FINDINGS.md](FINDINGS.md) (문제 대장) · [../loadtest/README.md](../loadtest/README.md) (부하 테스트) · [../monitoring/README.md](../monitoring/README.md) (대시보드)
+
 **"적재 → 문제 발견 → 개선 → 재적재 → 확인"을 반복하는 작업 공간이다.** 한 번 재고 끝나는 게
 아니라 회차를 쌓아 전후를 비교한다.
 

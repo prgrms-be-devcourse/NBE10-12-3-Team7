@@ -16,6 +16,7 @@
 | `mobile/` | Kotlin + Compose Android 앱 | [mobile/mobile.md](mobile/mobile.md) |
 | `agent/` | Python + LangGraph AI 에이전트 서비스 | [agent/agent.md](agent/agent.md) |
 | `infra/` | 배포 자원 (온프레미스 · AWS) | [infra/infra.md](infra/infra.md) |
+| └ `infra/onprem/perf` · `loadtest` | **성능 검증** — 볼륨(데이터량) · 부하(동시성, k6) | [perf](infra/onprem/perf/README.md) · [loadtest](infra/onprem/loadtest/README.md) |
 | `e2e/` | Playwright e2e 테스트 (자체 격리 환경 포함) | [e2e/e2e.md](e2e/e2e.md) |
 
 그 밖에:
@@ -34,7 +35,9 @@ AGENTS.md            AI 에이전트 작업 규칙 — 에이전트는 이걸 �
 | 프론트 | Next.js 16(App Router), React 19, TypeScript, Tailwind |
 | 모바일 | Kotlin, Jetpack Compose, Hilt, Retrofit |
 | AI | Spring AI + Ollama (관리자 어시스턴트) · Python LangGraph (사용자 도메인) |
-| 인프라 | Docker Compose, nginx, Prometheus·Loki·Grafana, Cloudflare Tunnel |
+| 인프라 | Docker Compose, nginx, Zot(이미지 레지스트리), RustFS(S3 호환 스토리지), Prometheus·Loki·Grafana, Cloudflare Tunnel |
+| CI/CD · IaC | Jenkins(온프레미스 CD), OpenTofu(AWS 관리형 미러 — 코드 전용) |
+| 성능 검증 | k6(부하 · 동시성), 자체 측정 스크립트(볼륨 · 데이터량), Prometheus remote-write |
 
 ---
 
@@ -72,11 +75,19 @@ cd infra/onprem && cp .env.example .env && docker compose --env-file .env up -d 
 
 → 브라우저 **http://localhost** (nginx 현관 하나로 프론트·API 통합)
 
-관측·외부노출 프로파일과 접속 지점은 [infra/infra.md](infra/infra.md).
+관측·외부노출 프로파일과 접속 지점은 [infra/onprem/README.md](infra/onprem/README.md).
 
-### C. cloud — AWS 배포 (운영)
+### C. cloud — AWS 미러 (IaC · 코드 전용)
 
-AWS **EC2 3대(앱 · DB · 모니터링) + ECR**. DB는 관리형 RDS가 아니라 EC2에 MySQL 컨테이너 자체 호스팅이다. 이미지는 GitHub Actions가 ECR로 push하고 EC2가 pull한다. 절차는 [infra/infra.md](infra/infra.md).
+**실제 운영은 B(온프레미스)에서 한다.** C는 같은 아키텍처를 AWS **관리형 서비스**로 대응시킨 OpenTofu 코드이고, **`apply` 하지 않는다 — 코드 자체가 산출물이다.**
+
+ALB · ECS Fargate(app·next) · RDS MySQL · ElastiCache Redis · S3 · ECR · Secrets Manager · CloudWatch · Route 53 · ACM. EC2는 Ollama 한 대뿐이다.
+
+```bash
+cd infra/cloud-terraform && tofu init && tofu validate && tofu plan   # 58 to add
+```
+
+구성과 온프레미스 대응 관계는 [infra/cloud-terraform/README.md](infra/cloud-terraform/README.md).
 
 ---
 

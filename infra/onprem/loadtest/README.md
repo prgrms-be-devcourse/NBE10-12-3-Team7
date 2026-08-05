@@ -1,5 +1,8 @@
 # loadtest — k6 부하테스트
 
+> 상위: [../README.md](../README.md) · [../../infra.md](../../infra.md)
+> 관련: [../perf/README.md](../perf/README.md) (볼륨 테스트) · [../perf/FINDINGS.md](../perf/FINDINGS.md) (문제 대장) · [../monitoring/README.md](../monitoring/README.md) (대시보드)
+
 **동시 사용자가 늘어날 때 어디까지 버티나**를 잰다. 옆의 `perf/`(볼륨 테스트)와는 질문이 다르다.
 
 | | `perf/` | `loadtest/` |
