@@ -117,19 +117,90 @@ JAVA_HOME="<Android Studio>/jbr" gradle -p mobile :app:testDebugUnitTest --rerun
 gradle -p mobile :app:connectedDebugAndroidTest
 ```
 
+### 빌드 타입 — 바라보는 서버가 다르다
+
+| 빌드 | BASE_URL | 서명 | 용도 |
+|---|---|---|---|
+| `debug` | `http://10.0.2.2:8080/` | debug 키 | **에뮬레이터 전용** |
+| `lan` | `http://<PC-IP>:8080/` (빌드 시 주입) | debug 키 | **실제 폰**에서 확인 |
+| `release` | `https://marketon.inyeon.io/` | 릴리스 키 | 배포 — 🔴 **지금 못 쓴다** |
+
+`10.0.2.2` 는 **에뮬레이터가 호스트 PC 를 보는 가상 주소**다. 실제 폰에서는 동작하지 않는다.
+
+> 🔴 **`release` 는 아직 배포에 쓸 수 없다.** AWS → 온프레미스 전환으로
+> `marketon.inyeon.io` 의 DNS 가 사라졌다(`Non-existent domain`).
+> HTTPS 도메인이 정해지면 이 값을 바꾼다 — [이슈 #114](https://github.com/prgrms-be-devcourse/NBE10-12-3-Team7/issues/114).
+> 그때까지 팀 배포는 `lan` 빌드(같은 Wi-Fi)로만 가능하다.
+
+```bash
+# 폰용 — IP 는 저장소에 박지 않고 빌드할 때 넘긴다
+gradle -p mobile :app:assembleLan -PlanHost=192.168.0.5:8080
+```
+
+`lan` 은 사설망 HTTP 라 `usesCleartextTraffic` 이 필요한데, 그 설정은
+`src/lan/AndroidManifest.xml` 에만 둔다 → **`release` 는 평문 통신이 허용되지 않는다.**
+
+### 릴리스 서명
+
+`build.gradle.kts` 가 `local.properties`(gitignore) 또는 환경변수에서 읽는다.
+
+```properties
+RELEASE_STORE_FILE=/절대/경로/marketon-release.jks
+RELEASE_STORE_PASSWORD=...
+RELEASE_KEY_ALIAS=marketon
+RELEASE_KEY_PASSWORD=...
+```
+
+키가 없어도 빌드는 깨지지 않는다(다른 팀원·CI 가 막히지 않도록). 대신 **서명되지 않은
+설치 불가능한 APK** 가 나오므로 릴리스 빌드 시작 시 경고를 띄운다.
+
+> 🔴 키를 잃으면 같은 앱을 다시 업데이트할 수 없다. `.jks` 와 비밀번호는 저장소 밖에 보관한다.
+
 ### 로컬 백엔드 (앱 검수용)
 ```bash
 docker compose up -d mysql redis
 MAIL_USERNAME=noreply@localhost MAIL_PASSWORD=dummy \
-  backend/gradlew -p backend bootRun --args='--spring.profiles.active=dev,demo'
+  backend/gradlew -p backend bootRun --args='--spring.profiles.active=dev'
 ```
 > `MAIL_USERNAME` 이 없으면 **기동 자체가 실패**한다(`SmtpEmailSender` 가 필수 빈).
-> `demo` 는 `ddl-auto: create` 라 스키마를 드롭·재시딩한다.
+> 데모 시드가 필요하면 `app.seed.demo=true` 를 준다(`DemoDataSeeder`).
 
-debug 빌드는 `http://10.0.2.2:8080` (에뮬레이터가 보는 PC의 localhost)을 본다.
+## 구현 현황
+
+백엔드 엔드포인트 **83개** 중 관리자용 17개는 모바일 범위가 아니다 →
+**소비자용 66개 중 21개(32%)** 를 소비한다.
+
+| 도메인 | 소비 | 상태 |
+|---|---|---|
+| 채팅 | 5/5 | ✅ |
+| 지역·내 동네 | 3/3 | ✅ |
+| 찜 | 3/3 | ✅ |
+| 상품 | 5/9 | 🟡 조회·등록만. **수정·삭제·상태변경·내 상품 목록 없음** |
+| 카테고리 | 1/2 | 🟡 목록만 |
+| 인증·계정 | 2/13 | 🔴 로그인·로그아웃만 |
+| 이미지 | 1/2 | 🟡 업로드만 |
+| 신고 | 0/7 | ⬜ |
+| 거래·에스크로 | 0/7 | ⬜ |
+| 댓글 | 0/4 | ⬜ |
+| 알림 | 0/3 | ⬜ |
+| 경매 | 0/3 | ⬜ |
+| 매너온도 | 0/3 | ⬜ |
+
+### ⚠️ 목표 대비 미달성
+
+착수 시 목표는 "백엔드 API 를 소비해 모바일 앱으로 전환" 이었다. **전환은 3분의 1 지점에서 멈췄다.**
+특히 아래 둘은 앱이 **제품으로 성립하지 못하게** 만드는 구멍이다.
+
+| 미구현 | 왜 문제인가 |
+|---|---|
+| **회원가입** (`POST /api/auth/signup`) | 시드 계정으로만 앱을 쓸 수 있다. 새 사용자가 진입할 방법이 없다 |
+| **내 상품 관리** (`GET /api/products/me`, `PATCH` 상태·수정, `DELETE`) | 등록만 되고 그 뒤가 없다. 올린 물건을 거래완료로 바꾸거나 지울 수 없다 |
+
+그 밖에: 찜 목록·내정보 화면이 없어 **하단 탭 4개 중 2개가 비활성**이고,
+신고·댓글·거래·경매·알림·매너온도는 착수하지 않았다.
 
 ## 주의
 
 - API 스펙의 정본은 백엔드 **Swagger**다. DTO를 손으로 작성하므로 백엔드 변경 시 어긋날 수 있다.
 - 화면·계층이 추가되면 이 문서의 구조를 **같은 PR에서** 갱신한다.
-- 현재 백엔드 API **81개 중 21개(26%)** 만 소비한다. 회원가입·찜목록·내정보·상품수정/삭제·알림·에스크로·경매는 미구현이다.
+- **모바일은 CI 에 없다**(`.github/workflows/ci.yml`). 테스트는 로컬에서만 돈다.
