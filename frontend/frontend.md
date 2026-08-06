@@ -11,6 +11,7 @@
 | 프레임워크 | Next.js 16 (App Router), React 19 |
 | 언어 | TypeScript |
 | 스타일 | CSS Modules (`*.module.css`) + Tailwind |
+| 실시간 | STOMP over WebSocket (`@stomp/stompjs`) — 채팅 수신·경매 입찰·헤더 알림 배지 |
 | 배포 | Dockerfile 포함 — onprem/cloud 공용 이미지 |
 
 ## 폴더 구조
@@ -30,13 +31,15 @@ frontend/src/
 | `/` | 홈 — 상품 목록 |
 | `/login` · `/signup` | 로그인 · 회원가입(약관 동의 포함) |
 | `/find-password` · `/password-reset` | 비밀번호 찾기 · 재설정 |
+| `/oauth/kakao/callback` · `/oauth/google/callback` | 소셜 로그인 콜백 |
 | `/products` | 상품 목록·상세·등록·수정 |
+| `/auctions` | 실시간 경매(딜) — 목록·등록·상세(STOMP 입찰) |
 | `/chat` | 1:1 채팅 |
 | `/escrow` | 안심결제(에스크로) |
 | `/my-profile` | 내 정보 · 동네 설정 |
 | `/my-reports` | 내 신고 내역 |
 | `/report` | 신고 접수 |
-| `/(my-marketon)` | 내 마켓온 — 라우트 그룹 |
+| `/(my-marketon)` | 내 마켓온 — 라우트 그룹 (`/favorites` · `/my-products`) |
 | `/admin` | 관리자 |
 
 ## 실행
@@ -47,6 +50,8 @@ npm run dev        # :3000 — /api 는 :8080 으로 프록시
 ```
 
 백엔드가 `:8080`에 떠 있어야 API가 동작한다. 기동 방법은 [../backend/backend.md](../backend/backend.md).
+
+거래 법률 상담 위젯은 `/agent`가 `:8000`(별도 FastAPI 서비스)으로 프록시된다 — 그 위젯을 쓰려면 [../agent/agent.md](../agent/agent.md)도 띄운다.
 
 ## 검증
 
@@ -60,6 +65,6 @@ npx eslint .       # 린트
 
 ## 주의
 
-- **CORS 설정 없음** — 브라우저는 단일 origin(dev=Next, 배포=nginx)만 호출하고 `/api`는 프록시된다. API 호출 시 절대 URL을 쓰지 않는다.
+- **단일 origin 원칙** — 브라우저는 단일 origin(dev=Next, 배포=nginx)만 호출하고 `/api`는 프록시된다. API 호출 시 절대 URL을 쓰지 않는다.
 - 지역은 문자열이 아니라 **`regionCode`(계층형 지역 마스터)** 기준이다.
 - 새 라우트를 추가하면 이 문서의 라우트 지도를 **같은 PR에서** 갱신한다.

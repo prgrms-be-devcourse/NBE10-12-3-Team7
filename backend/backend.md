@@ -1,10 +1,10 @@
 # backend — Spring Boot API 서버
 
-마켓온의 API 서버. **Spring Boot 3.5 / Java 21 + Kotlin 2.2**, 도메인별 패키지 + 계층형 구조.
+마켓온의 API 서버. **Spring Boot 3.5 / Kotlin 2.2 (JVM 21)**, 도메인별 패키지 + 계층형 구조.
 
-> 🔄 **Java → Kotlin 마이그레이션 진행 중.** 두 언어가 공존한다 —
-> `src/main/java`(남은 것)와 `src/main/kotlin`(전환된 것)을 함께 컴파일한다.
-> 전환이 끝나면 `java` 소스셋을 삭제한다. 진행 상황과 규칙은 아래 [Kotlin 마이그레이션](#kotlin-마이그레이션) 참고.
+> ✅ **Java → Kotlin 마이그레이션 완료.** `src/main/java`·`src/test/java` 소스셋은 삭제됐고
+> main 281개 · test 106개 파일 전부 `src/main/kotlin`·`src/test/kotlin` 에 있다.
+> 전환 과정에서 굳은 규칙은 아래 [Kotlin 마이그레이션](#kotlin-마이그레이션) — Kotlin 을 쓰는 한 계속 유효하다.
 
 > 이 문서는 `backend/`를 이해하는 진입점이다. 리포 전체는 [../README.md](../README.md), 에이전트 작업 규칙은 [../AGENTS.md](../AGENTS.md).
 
@@ -12,22 +12,24 @@
 
 | | |
 |---|---|
-| 프레임워크 | Spring Boot 3.5, Java 21 + **Kotlin 2.2**(전환 중, 공존) |
-| 보안 | Spring Security + JWT |
+| 프레임워크 | Spring Boot 3.5, **Kotlin 2.2.20** (JVM 21) |
+| 보안 | Spring Security + JWT · 소셜 로그인(카카오·구글, `spring-security-oauth2-jose`) |
 | 영속성 | JPA(Hibernate), MySQL 8 / 테스트는 H2 |
+| 인증 TTL 저장소 | **Redis** — Refresh Token·로그인 실패 제한·이메일 인증 코드·비밀번호 재설정 토큰 |
 | 스키마 | **Flyway** 마이그레이션 (`src/main/resources/db/migration/`). 운영은 `ddl-auto: validate` |
+| 실시간 | WebSocket + STOMP — `/ws` 핸드셰이크, 클라→서버는 `/app` prefix (경매 입찰) |
+| 스토리지 | AWS SDK S3 (`global/storage`) — dev 는 local(호스트 `./uploads`) |
 | 문서 | Springdoc(Swagger) — 코드에서 자동 생성 |
 | AI | Spring AI + Ollama (관리자 AI 어시스턴트 `admin/ai`) |
 
 ## 도메인 지도
 
-패키지 루트는 `com.dongnemarket` — 전환 여부에 따라 `src/main/java/com/dongnemarket/`
-또는 `src/main/kotlin/com/dongnemarket/` 에 있다(패키지 경로는 동일).
+패키지 루트는 `com.dongnemarket` (`src/main/kotlin/com/dongnemarket/`).
 **작업은 자기 도메인 패키지 안에서만** 한다.
 
 | 도메인 | API 베이스 | 책임 |
 |---|---|---|
-| `auth` | `/api/auth`, `/api/auth/email-verifications`, `/api/auth/password-resets` | 회원가입·로그인·JWT·이메일 인증·비밀번호 재설정 |
+| `auth` | `/api/auth`, `/api/auth/email-verifications`, `/api/auth/password-resets` | 회원가입·로그인·JWT·이메일 인증·비밀번호 재설정·소셜 로그인(`/api/auth/oauth/{kakao,google}/*`) |
 | `member` | `/api/members`, `/api/members/me/locations` | 내 정보·동네(지역) 설정 |
 | `product` | `/api/products`, `/api/products/me` | 상품·이미지·검색·노출 우선순위 |
 | `category` | `/api/categories` | 카테고리 |
@@ -35,11 +37,12 @@
 | `favorite` | — | 찜. 이벤트로 `Product.favoriteCount` 증감 |
 | `comment` | — | 댓글 |
 | `report` | — | 신고 |
-| `notification` | — | 알림(댓글·가격변경·채팅). **저장형이 아니라 조회 시점 파생** |
-| `chat` | — | 1:1 채팅 |
+| `notification` | `/api/notifications` | 알림(댓글·가격변경·채팅). **저장형이 아니라 조회 시점 파생** |
+| `chat` | `/api/chat-rooms` | 1:1 채팅 |
 | `trade` | — | 거래 내역 |
 | `escrow` | `/api/escrows` | **안심결제(에스크로)** — 단일 Trade 애그리거트, 실송금은 모사 |
-| `manner` | — | 매너온도 |
+| `auction` | `/api/auctions` + STOMP `/app/auction/{id}/bid` | **실시간 경매(딜)** — 입찰 브로드캐스트, 스케줄러로 마감 |
+| `manner` | `/api/manner/ratings`, `/api/members/*/manner-score` | 매너온도 |
 | `admin` | `/api/admin/*` (ai · members · products · comments · reports · dashboard · manner-scores · storage) | 운영 관리 + AI 어시스턴트 |
 | `global` | — | **공통(팀장 소유)** — 응답·예외·보안·설정·시더 |
 
@@ -83,7 +86,8 @@ Java → Kotlin 전환을 도메인 단위로 진행한다. 전환된 파일은 
   - ⚠️ **위험한 쪽은 검증·Jackson 어노테이션이다.** `@NotBlank` `@NotNull` `@Size` `@JsonProperty` 는
     `@Target` 에 PARAMETER 가 있어 **생성자 파라미터가 우선 선택**된다. 검증은 필드/getter 를 읽으므로
     DTO 를 `data class` 로 옮길 때 `@field:NotBlank` 로 명시하지 않으면 **검증이 걸리지 않을 수 있다.**
-    (현재 검증 어노테이션 58곳 / 22파일 — 첫 DTO 전환 시 "빈 문자열 → 400" 테스트로 확인할 것)
+    (현재 검증 어노테이션 76곳 / 42파일 — `grep -rEo '@(field:)?(NotBlank|NotNull|Size|NotEmpty|Min|Max|Positive|Email|Pattern|PositiveOrZero|DecimalMin)\b' src/main/kotlin`
+    기준, `@Valid` 제외. DTO 를 새로 쓰거나 옮길 때 "빈 문자열 → 400" 테스트로 확인할 것)
   - 어노테이션마다 `@Target` 을 찾아보지 않아도 되도록 **엔티티·DTO 주 생성자는 `@field:` 로 통일**한다.
 - **컨테이너 원소 검증(`List<@NotBlank String>`)은 Kotlin 에서 조용히 사라진다.** 타입 인자(TYPE_USE)
   어노테이션은 `-Xemit-jvm-type-annotations` 없이는 바이트코드에 남지 않아 **Bean Validation 도
@@ -205,7 +209,7 @@ find src/main/kotlin -name '*.kt' | wc -l    # 전환된 것
 ## 실행
 
 ```bash
-docker compose up -d --wait     # 리포 루트에서 — MySQL만 기동
+docker compose up -d --wait     # 리포 루트에서 — MySQL·Redis·Ollama 기동
 ./gradlew bootRun               # :8080
 ```
 
@@ -215,24 +219,36 @@ docker compose up -d --wait     # 리포 루트에서 — MySQL만 기동
 
 ```bash
 # 데모 데이터(회원 6·상품 6·댓글 5·신고 5) 주입. 기존 데이터는 유지된다
-APP_SEED_DEMO=true ./gradlew bootRun
+APP_SEED_DEMO=true APP_SEED_DEMO_PASSWORD=<데모계정-비밀번호> ./gradlew bootRun
 
 # 스키마를 지우고 처음부터 — ⚠️ 데이터 전체 소실
-APP_SEED_DEMO=true SPRING_JPA_HIBERNATE_DDL_AUTO=create ./gradlew bootRun
+APP_SEED_DEMO=true APP_SEED_DEMO_PASSWORD=<데모계정-비밀번호> SPRING_JPA_HIBERNATE_DDL_AUTO=create ./gradlew bootRun
+
+# 관리자 계정 시드 — dev 프로파일에서만 돈다
+APP_SEED_ADMIN=true APP_SEED_ADMIN_PASSWORD=<관리자-비밀번호> ./gradlew bootRun
 ```
 
-마스터(카테고리·지역)와 부트스트랩(관리자)에는 스위치가 없다 — 없으면 서비스가 성립하지 않는
-데이터라 항상 적재된다. 계층별 설명과 환경별 적재 현황은 `infra/infra.md` 참고.
+**시드 비밀번호에는 기본값이 없다.** 스위치만 켜고 값을 안 주면 기동이 실패한다 — 빈 비밀번호
+계정이 조용히 생기는 것보다 낫다는 판단이다. 리포가 public 이라 소스에는 두지 않는다.
+
+마스터(카테고리·지역)에는 스위치가 없다 — 없으면 서비스가 성립하지 않는 데이터라 항상 적재된다.
+부트스트랩(관리자)은 자격증명을 만드는 시더라 `@Profile("dev")` + `APP_SEED_ADMIN` 으로 이중 차단한다
+(운영에서는 쓰지 않고 배포 후 수동 생성). 계층별 설명과 환경별 적재 현황은 `infra/infra.md` 참고.
 
 ## 테스트
 
 ```bash
-./gradlew test                          # 단위 + 슬라이스 (H2)
+./gradlew test                          # 단위 + 슬라이스 (H2) — integration 태그는 제외된다
+./gradlew integrationTest               # integration 태그만 — 진짜 Redis·MySQL(Testcontainers), Docker 필요
 ./gradlew test --tests "com.dongnemarket.favorite.*"   # 도메인별
 ./gradlew clean build -x test           # 앱 이미지용 JAR
 ```
 
 - 단위 테스트는 목킹 기반, 통합 테스트는 `@SpringBootTest`·`@DataJpaTest`.
+- **`@Tag("integration")` 이 붙은 10개 클래스는 `./gradlew test` 에서 빠진다.** H2 로는 검증되지 않는
+  것들이라 Testcontainers 로 진짜를 띄운다 — Redis TTL 동작(`RedisRefreshTokenRepositoryTest`),
+  Flyway 스키마 ↔ 엔티티 매핑(`V3SocialLoginSchemaValidationTest`) 등.
+  `test` 만 돌리고 "전부 통과"로 보지 않는다.
 - 통합 테스트는 "코드만 읽어도 흐름이 보이는" 실행 명세서로 쓴다 — GWT 구조, 시나리오 네이밍, 실제 사용자 여정.
 - **테스트마다 H2 데이터베이스가 따로 뜬다.** 설정은 `application-test.yml` 한 줄이다.
 
@@ -257,6 +273,9 @@ APP_SEED_DEMO=true SPRING_JPA_HIBERNATE_DDL_AUTO=create ./gradlew bootRun
 
 ## 주의
 
-- **CORS 설정 없음** — 브라우저는 단일 origin만 호출하고 `/api`는 서버가 프록시한다.
+- **CORS 설정 있음** — 기본 원칙은 여전히 단일 origin(브라우저는 한 곳만 호출하고 `/api`는 서버가
+  프록시한다)이지만, 소셜 로그인으로 credentials 를 포함한 교차 origin 요청이 생겨 도입했다
+  (`global/security/SecurityConfig`). 허용 origin 은 `CORS_ALLOWED_ORIGINS`(콤마 구분, 기본
+  `http://localhost:3000`)로 환경별 관리하고, 비어 있거나 `*` 가 섞이면 **기동을 막는다.**
 - `global/` 공통 구조(SecurityConfig·공통 응답/에러)는 팀장 영역이다.
 - 새 도메인을 추가하면 이 문서의 도메인 지도를 **같은 PR에서** 갱신한다.
