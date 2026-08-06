@@ -12,7 +12,7 @@
 
 | 모듈 | 무엇 | 문서 |
 |---|---|---|
-| `backend/` | Spring Boot 3.5 / Java 21 · Security(JWT) · JPA · MySQL 8 · Flyway · Swagger | [backend/backend.md](backend/backend.md) |
+| `backend/` | Spring Boot 3.5 / Kotlin 2.2 · Security(JWT) · JPA · MySQL 8 · Redis · Flyway · Swagger | [backend/backend.md](backend/backend.md) |
 | `frontend/` | Next.js 16(App Router) · React 19 · TypeScript | [frontend/frontend.md](frontend/frontend.md) |
 | `mobile/` | Kotlin · Jetpack Compose · Hilt · Retrofit | [mobile/mobile.md](mobile/mobile.md) |
 | `agent/` | Python · LangGraph · Ollama(qwen3:4b) · FastAPI | [agent/agent.md](agent/agent.md) |
@@ -20,12 +20,12 @@
 
 ## 2. 코드 지도 (어디를 고치나)
 
-백엔드 패키지 루트: `com.dongnemarket` (`backend/src/main/java/com/dongnemarket/`).
+백엔드 패키지 루트: `com.dongnemarket` (`backend/src/main/kotlin/com/dongnemarket/`).
 **도메인별 패키지 + 계층형** 구조. 작업은 **자기 도메인 패키지 안에서만** 한다.
 
 | 도메인 | 책임 |
 |---|---|
-| `auth` | 회원가입·로그인·JWT·이메일 인증·비밀번호 재설정 |
+| `auth` | 회원가입·로그인·JWT·이메일 인증·비밀번호 재설정·소셜 로그인(카카오·구글) |
 | `member` | 내 정보·동네(지역) |
 | `product` | 상품·이미지·검색·노출 우선순위 |
 | `category` | 카테고리 |
@@ -37,6 +37,7 @@
 | `chat` | 1:1 채팅 |
 | `trade` | 거래 내역 |
 | `escrow` | 안심결제(에스크로) |
+| `auction` | 실시간 경매(딜) — STOMP 입찰 브로드캐스트, 스케줄러 마감 |
 | `manner` | 매너온도 |
 | `admin` (+`admin/ai/`) | 운영 관리 + AI 어시스턴트 |
 | `global` | **공통(팀장 소유)** — 응답·예외·보안·설정 |
@@ -61,10 +62,11 @@
 
 **주요 명령** (리포 루트에서):
 ```bash
-docker compose up -d --wait                    # MySQL만 (dev)
+docker compose up -d --wait                    # MySQL·Redis·Ollama (dev)
 cd backend && ./gradlew bootRun                # 백엔드 :8080
 cd frontend && npm install && npm run dev      # 프론트 :3000
-cd backend && ./gradlew test                   # 단위/슬라이스 테스트 (H2)
+cd backend && ./gradlew test                   # 단위/슬라이스 테스트 (H2) — integration 태그 제외
+cd backend && ./gradlew integrationTest        # 통합 테스트 (Testcontainers, Docker 필요)
 ```
 
 ## 4. 개발 흐름 (모든 기능 공통)

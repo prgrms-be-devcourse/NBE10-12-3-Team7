@@ -11,7 +11,7 @@
 
 | 폴더 | 무엇 | 문서 |
 |---|---|---|
-| `backend/` | Spring Boot 3.5 / Java 21 API 서버 | [backend/backend.md](backend/backend.md) |
+| `backend/` | Spring Boot 3.5 / Kotlin 2.2 API 서버 | [backend/backend.md](backend/backend.md) |
 | `frontend/` | Next.js 16 (App Router) 웹 클라이언트 | [frontend/frontend.md](frontend/frontend.md) |
 | `mobile/` | Kotlin + Compose Android 앱 | [mobile/mobile.md](mobile/mobile.md) |
 | `agent/` | Python + LangGraph AI 에이전트 서비스 | [agent/agent.md](agent/agent.md) |
@@ -22,16 +22,18 @@
 그 밖에:
 
 ```
-docker-compose.yml   ★ dev 전용 (MySQL만 — 앱·프론트는 호스트에서 실행)
+docker-compose.yml   ★ dev 전용 (MySQL·Redis·Ollama — 앱·프론트는 호스트에서 실행)
 .env.example         dev용 환경변수 키 목록 (복사해서 .env)
 AGENTS.md            AI 에이전트 작업 규칙 — 에이전트는 이걸 먼저 읽는다
+Jenkinsfile          온프레미스 CD 파이프라인 (상세는 infra/infra.md)
+.github/             PR 템플릿
 ```
 
 ## 기술 스택
 
 | | |
 |---|---|
-| 백엔드 | Spring Boot 3.5, Java 21, Spring Security(JWT), JPA, MySQL 8, Flyway |
+| 백엔드 | Spring Boot 3.5, Kotlin 2.2 / JVM 21, Spring Security(JWT), JPA, MySQL 8, Redis, Flyway, WebSocket(STOMP) |
 | 프론트 | Next.js 16(App Router), React 19, TypeScript, Tailwind |
 | 모바일 | Kotlin, Jetpack Compose, Hilt, Retrofit |
 | AI | Spring AI + Ollama (관리자 어시스턴트) · Python LangGraph (사용자 도메인) |
@@ -47,11 +49,13 @@ AGENTS.md            AI 에이전트 작업 규칙 — 에이전트는 이걸 �
 
 ### A. dev — 매일 개발 (권장, 빠른 루프)
 
-MySQL만 Docker, 앱·프론트는 호스트에서 직접 실행:
+MySQL·Redis·Ollama만 Docker, 앱·프론트는 호스트에서 직접 실행:
 
 ```bash
 docker compose up -d --wait
 ```
+
+> 최초 `up`은 Ollama 모델(qwen3:1.7b, ~1.4GB)을 받느라 몇 분 걸린다. 볼륨에 남아 이후엔 즉시 통과한다.
 
 ```bash
 cd backend && ./gradlew bootRun
@@ -62,6 +66,8 @@ cd frontend && npm install && npm run dev
 ```
 
 → 브라우저 **http://localhost:3000** (`/api`는 :8080으로 프록시)
+
+거래 법률 상담 위젯은 `agent/`(:8000)가 떠 있어야 동작한다(`/agent`도 프록시된다) — [agent/agent.md](agent/agent.md).
 
 ### B. 온프레미스 — 전부 Docker로 (운영 패리티·시연)
 
@@ -104,5 +110,5 @@ API 요청/응답 스키마의 정본은 **Swagger**(`http://localhost:8080/swag
 
 ## 참고
 
-- **CORS 설정 없음** — 어느 환경이든 브라우저는 단일 origin(dev=Next, 온프레미스·클라우드=nginx)만 호출하고 `/api`는 서버가 프록시한다.
+- **단일 origin 원칙** — 어느 환경이든 브라우저는 단일 origin(dev=Next, 온프레미스·클라우드=nginx)만 호출하고 `/api`는 서버가 프록시한다.
 - `.env`는 커밋하지 않는다(gitignore). `.env.example`이 필요한 키 목록.
